@@ -2899,15 +2899,14 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-ttl
   [parquet_shard_cache_ttl: <duration> | default = 24h]
 
-  # [Experimental] If enabled, Store Gateway will honor projection hints and
-  # only materialize requested labels. It only takes effect when
-  # `-blocks-storage.bucket-store.bucket-store-type` is parquet, the bucket
-  # index is enabled, `-querier.honor-projection-hints` is enabled, and the
-  # querier uses the Thanos engine with the `projection` optimizer. Enable it on
-  # all store-gateways before enabling `-querier.honor-projection-hints`, and
-  # disable it in the reverse order, otherwise the same series can come back
-  # from different store-gateways with different label sets and be counted
-  # twice.
+  # [Experimental] If true, a store-gateway running with
+  # `-blocks-storage.bucket-store.bucket-store-type=parquet` honors projection
+  # hints from the querier and only materializes the requested labels, under the
+  # conditions described in `-querier.honor-projection-hints`. Enable it on all
+  # store-gateways, all in parquet mode, before enabling
+  # `-querier.honor-projection-hints`, and keep both until that flag is
+  # disabled; otherwise the same series can come back from different
+  # store-gateways with different label sets and be counted twice.
   # CLI flag: -blocks-storage.bucket-store.honor-projection-hints
   [honor_projection_hints: <boolean> | default = false]
 
@@ -5535,15 +5534,14 @@ thanos_engine:
 # CLI flag: -querier.parquet-queryable-fallback-disabled
 [parquet_queryable_fallback_disabled: <boolean> | default = false]
 
-# [Experimental] If true, querier will honor projection hints and only
-# materialize requested labels. Projection is effective when Parquet Queryable
-# is enabled, or when store-gateways run in parquet mode with
-# `-blocks-storage.bucket-store.honor-projection-hints` enabled. Projection is
-# only applied when not querying ingesters and every queried block was converted
-# to parquet. When store-gateways serve the blocks, enable this flag only after
-# `-blocks-storage.bucket-store.honor-projection-hints` is enabled on all
-# store-gateways, and disable this flag before disabling that one on any
-# store-gateway.
+# [Experimental] If true, querier will honor projection hints from the Thanos
+# engine `projection` optimizer and only materialize requested labels.
+# Projection is done by the Parquet Queryable, or by store-gateways in parquet
+# mode with `-blocks-storage.bucket-store.honor-projection-hints`, and only when
+# every queried block was converted to parquet and ingesters are not queried.
+# When store-gateways serve the blocks, enable this flag only after all of them
+# run in parquet mode with that flag enabled, and disable this flag before
+# changing either on any store-gateway.
 # CLI flag: -querier.honor-projection-hints
 [honor_projection_hints: <boolean> | default = false]
 

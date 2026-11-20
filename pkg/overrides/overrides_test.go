@@ -234,7 +234,7 @@ func TestAPIEndpoints(t *testing.T) {
 			path:           "/api/v1/user-overrides",
 			tenantID:       "user789",
 			requestBody:    map[string]any{"ingestion_rate": 5000, "ruler_max_rules_per_rule_group": 10},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusAccepted,
 			setupMock: func(mock *bucket.ClientMock) {
 				// Mock runtime config with allowed limits
 				runtimeConfig := `overrides:
@@ -288,7 +288,7 @@ api_allowed_limits:
 			path:           "/api/v1/user-overrides",
 			tenantID:       "user888",
 			requestBody:    map[string]any{"ingestion_rate": 8000}, // Only update ingestion_rate
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusAccepted,
 			setupMock: func(m *bucket.ClientMock) {
 				// Mock runtime config with existing overrides for user888
 				initialConfig := `overrides:

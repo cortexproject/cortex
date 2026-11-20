@@ -418,6 +418,7 @@ jobs:
             retry docker pull quay.io/cortexproject/cortex:v1.20.1
             retry docker pull quay.io/cortexproject/cortex:v1.21.0
             retry docker pull quay.io/cortexproject/cortex:v1.21.1
+            retry docker pull quay.io/cortexproject/cortex:v1.22.0
           elif [ "$TEST_TAGS" = "integration_query_fuzz" ]; then
             retry docker pull "$CORTEX_LATEST_RELEASE_IMAGE"
             retry docker pull quay.io/prometheus/prometheus:v3.9.1

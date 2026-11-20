@@ -250,3 +250,80 @@ func TestBuildInfoAPI(t *testing.T) {
 		})
 	}
 }
+
+func TestFeaturesAPI(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		features map[string]map[string]bool
+	}{
+		{
+			name:     "nil features",
+			features: nil,
+		},
+		{
+			name: "populated features",
+			features: map[string]map[string]bool{
+				"api": {
+					"query_stats":        true,
+					"label_values_match": true,
+				},
+				"promql_operators": {
+					">=": true,
+					"<=": true,
+				},
+				"promql_functions": {
+					"abs":   true,
+					"ceil":  true,
+					"floor": true,
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := &featuresHandler{
+				features: tc.features,
+				logger:   &FakeLogger{},
+			}
+
+			writer := httptest.NewRecorder()
+			req := httptest.NewRequest("GET", "/api/v1/features", nil)
+			handler.ServeHTTP(writer, req)
+
+			assert.Equal(t, 200, writer.Code)
+			assert.Equal(t, "application/json", writer.Header().Get("Content-Type"))
+
+			var resp featuresResponse
+			err := json.Unmarshal(writer.Body.Bytes(), &resp)
+			require.NoError(t, err)
+			assert.Equal(t, "success", resp.Status)
+
+			if tc.features == nil {
+				assert.Nil(t, resp.Data)
+			} else {
+				require.NotNil(t, resp.Data)
+				for category, featureMap := range tc.features {
+					assert.Equal(t, featureMap, resp.Data[category], "category %s mismatch", category)
+				}
+			}
+		})
+	}
+
+	// Verify that PromQL operators like >= and <= are NOT HTML-escaped.
+	t.Run("operators not html escaped", func(t *testing.T) {
+		handler := &featuresHandler{
+			features: map[string]map[string]bool{
+				"promql_operators": {">=": true, "<=": true},
+			},
+			logger: &FakeLogger{},
+		}
+		writer := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/v1/features", nil)
+		handler.ServeHTTP(writer, req)
+
+		body := writer.Body.String()
+		assert.Contains(t, body, `">="`)
+		assert.Contains(t, body, `"<="`)
+		assert.NotContains(t, body, `\u003e`)
+		assert.NotContains(t, body, `\u003c`)
+	})
+}

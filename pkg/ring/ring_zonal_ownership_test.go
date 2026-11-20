@@ -2,6 +2,7 @@ package ring
 
 import (
 	"fmt"
+	"maps"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -130,12 +131,8 @@ func TestRing_ZonalOwnership_HandPickedTokens(t *testing.T) {
 			got := r.ZonalOwnership(tc.op)
 
 			expected := map[string]float64{}
-			for id, v := range balancedZoneB {
-				expected[id] = v
-			}
-			for id, v := range tc.expected {
-				expected[id] = v
-			}
+			maps.Copy(expected, balancedZoneB)
+			maps.Copy(expected, tc.expected)
 			require.Len(t, got, len(expected))
 			for id, want := range expected {
 				assert.InDelta(t, want, got[id], ownershipTolerance, "instance %s", id)

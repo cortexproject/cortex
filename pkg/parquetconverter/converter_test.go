@@ -357,8 +357,8 @@ func TestConverter_ShouldConvertNoCompactMarkBlocks(t *testing.T) {
 
 	blocks := []ulid.ULID{}
 	numBlocks := 2
-	mint := time.Hour * 13
-	maxt := time.Hour * 15
+	mint := time.Hour * 12
+	maxt := time.Hour * 14
 	// Create 2h blocks
 	for range numBlocks {
 		rnd := rand.New(rand.NewSource(time.Now().Unix()))

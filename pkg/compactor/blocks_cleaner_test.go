@@ -1222,11 +1222,19 @@ func TestBlocksCleaner_ParquetMetrics(t *testing.T) {
 				MaxTime: now.UnixMilli(),
 				Parquet: nil,
 			},
+			// A recent 2h block with a no-compact mark is too young to have
+			// its marker checked, so it is not counted as unconverted.
+			{
+				ID:      ulid.MustNew(ulid.Now(), rand.Reader),
+				MinTime: now.Truncate(2 * time.Hour).Add(-2 * time.Hour).UnixMilli(),
+				MaxTime: now.Truncate(2 * time.Hour).UnixMilli(),
+				Parquet: nil,
+			},
 		},
 	}
 
 	mockNoCompactMarkCheckFunc := func(blockID ulid.ULID) bool {
-		return false
+		return true
 	}
 
 	// Update metrics

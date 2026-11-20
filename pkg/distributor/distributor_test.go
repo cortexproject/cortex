@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1381,6 +1383,252 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// A request whose series all replicate fully, except one rejected by every
+// ingester it is sharded to, must fail: that series is stored nowhere.
+func TestDistributor_Push_ShouldFailWhenASeriesIsRejectedByAllItsIngesters(t *testing.T) {
+	t.Parallel()
+
+	const userID = "user"
+	replicated := labels.FromStrings(model.MetricNameLabel, "replicated")
+	rejected := labels.FromStrings(model.MetricNameLabel, "rejected")
+	replicatedToken := shardByAllLabels(userID, cortexpb.FromLabelsToLabelAdapters(replicated))
+	rejectedToken := shardByAllLabels(userID, cortexpb.FromLabelsToLabelAdapters(rejected))
+	require.NotEqual(t, replicatedToken, rejectedToken)
+	require.Less(t, max(replicatedToken, rejectedToken), uint32(math.MaxUint32-3))
+
+	// Ingesters 0-2 own the tokens right after the replicated series and
+	// ingesters 3-5 those right after the rejected one, so with RF 3 each series
+	// is written to exactly one group.
+	tokens := make([][]uint32, 0, 6)
+	for _, token := range []uint32{replicatedToken, rejectedToken} {
+		for i := range uint32(3) {
+			tokens = append(tokens, []uint32{token + 1 + i})
+		}
+	}
+
+	tests := map[string]struct {
+		err      error
+		wantCode int32
+	}{
+		"4xx": {err: httpgrpc.Errorf(http.StatusBadRequest, "per-user series limit exceeded"), wantCode: http.StatusBadRequest},
+		"5xx": {err: errFail, wantCode: http.StatusInternalServerError},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ds, ingesters, _, _ := prepare(t, prepConfig{
+				numIngesters:      6,
+				happyIngesters:    3,
+				numDistributors:   1,
+				shardByAllLabels:  true,
+				replicationFactor: 3,
+				errFail:           tc.err,
+				tokens:            tokens,
+			})
+
+			// Hold the rejections until the replicated series has been written
+			// to all three of its ingesters.
+			rejections := make(chan struct{})
+			releaseRejections := sync.OnceFunc(func() { close(rejections) })
+			t.Cleanup(releaseRejections)
+			for _, ing := range ingesters[3:] {
+				ing.pushGate = rejections
+			}
+
+			ctx := user.InjectOrgID(context.Background(), userID)
+			req := mockWriteRequest([]labels.Labels{replicated, rejected}, 1, time.Now().UnixMilli(), false)
+			result := make(chan error, 1)
+			go func() {
+				_, err := ds[0].Push(ctx, req)
+				result <- err
+			}()
+
+			for _, ing := range ingesters[:3] {
+				test.Poll(t, time.Second, 1, func() any { return len(ing.series()) })
+			}
+			// A slow machine can only make this miss an early return of the bug,
+			// never fail a correct Push.
+			select {
+			case err := <-result:
+				require.FailNow(t, "Push returned before the rejected series was answered", "err: %v", err)
+			case <-time.After(100 * time.Millisecond):
+			}
+			releaseRejections()
+
+			err := <-result
+			require.Error(t, err)
+			resp, ok := httpgrpc.HTTPResponseFromError(err)
+			require.True(t, ok, "not an HTTP error: %v", err)
+			require.Equal(t, tc.wantCode, resp.Code, "unexpected error: %v", err)
+
+			// The rejected series was sent to all three of its ingesters.
+			for _, ing := range ingesters[3:] {
+				test.Poll(t, time.Second, 1, func() any { return ing.countCalls("Push") })
+			}
+		})
+	}
+}
+
+// rejectSeries returns a mockIngester.rejectSeries hook rejecting exactly lbls.
+func rejectSeries(lbls labels.Labels) func([]cortexpb.LabelAdapter) bool {
+	return func(series []cortexpb.LabelAdapter) bool {
+		return labels.Equal(cortexpb.FromLabelAdaptersToLabels(series), lbls)
+	}
+}
+
+// An ingester that rejects one series fails its whole Push, and the distributor
+// counts that failure against every series in the Push. A valid series sharing
+// such ingesters with a series rejected everywhere is reported along with it.
+func TestDistributor_Push_PartialRejectionFailsEverySeriesInTheRPC(t *testing.T) {
+	t.Parallel()
+
+	const userID = "user"
+	series := []labels.Labels{
+		labels.FromStrings(model.MetricNameLabel, "alpha_total"),
+		labels.FromStrings(model.MetricNameLabel, "bravo_seconds"),
+		labels.FromStrings(model.MetricNameLabel, "charlie_bytes"),
+		labels.FromStrings(model.MetricNameLabel, "delta_ratio"),
+	}
+	type hashedSeries struct {
+		lbls  labels.Labels
+		token uint32
+	}
+	hashed := make([]hashedSeries, 0, len(series))
+	for _, lbls := range series {
+		hashed = append(hashed, hashedSeries{lbls, shardByAllLabels(userID, cortexpb.FromLabelsToLabelAdapters(lbls))})
+	}
+	slices.SortFunc(hashed, func(a, b hashedSeries) int { return cmp.Compare(a.token, b.token) })
+	q := []uint32{hashed[0].token, hashed[1].token, hashed[2].token}
+	require.Greater(t, q[0], uint32(2))
+	require.Greater(t, q[1], q[0]+1)
+	require.GreaterOrEqual(t, q[2], q[1]+3)
+
+	// With RF 3 these tokens put the first series on ingesters 2-4, the
+	// second (rejected) on 3-5, and the other two on 0-2.
+	tokens := [][]uint32{{q[0] - 2}, {q[0] - 1}, {q[0] + 1}, {q[1] + 1}, {q[1] + 2}, {q[1] + 3}}
+	rejected := hashed[1].lbls
+
+	ds, ingesters, _, _ := prepare(t, prepConfig{
+		numIngesters:      6,
+		happyIngesters:    6,
+		numDistributors:   1,
+		shardByAllLabels:  true,
+		replicationFactor: 3,
+		tokens:            tokens,
+	})
+	for _, ing := range ingesters[3:] {
+		ing.rejectSeries = rejectSeries(rejected)
+	}
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+	_, err := ds[0].Push(ctx, mockWriteRequest(series, 1, time.Now().UnixMilli(), false))
+	require.Error(t, err)
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	require.True(t, ok, "not an HTTP error: %v", err)
+	require.Equal(t, int32(http.StatusBadRequest), resp.Code, "unexpected error: %v", err)
+
+	// The first series was stored on all of its ingesters despite the error.
+	for _, ing := range ingesters[2:5] {
+		test.Poll(t, time.Second, true, func() any { _, found := ing.series()[hashed[0].token]; return found })
+	}
+}
+
+// Two ingesters each reject a different series, so a series sent to both is
+// counted as failed on two of its three ingesters although all three store it.
+// The push fails with 400 whatever the order of the responses: DoBatch only
+// sees whole-RPC results. Before quorum was counted once per series, it could
+// return success or 400 depending on that order.
+func TestDistributor_Push_RejectionsOnTwoIngestersFailASeriesStoredOnAll(t *testing.T) {
+	t.Parallel()
+
+	const userID = "user"
+	type hashedSeries struct {
+		lbls  labels.Labels
+		token uint32
+	}
+	var hashed []hashedSeries
+	// shardByAllLabels is FNV-1: names differing only in their last bytes hash
+	// a few units apart. Find six series whose tokens are spread enough.
+	for base := 0; ; base++ {
+		hashed = hashed[:0]
+		for i := range 6 {
+			lbls := labels.FromStrings(model.MetricNameLabel, fmt.Sprintf("series_%d_total", base*6+i))
+			hashed = append(hashed, hashedSeries{lbls, shardByAllLabels(userID, cortexpb.FromLabelsToLabelAdapters(lbls))})
+		}
+		slices.SortFunc(hashed, func(a, b hashedSeries) int { return cmp.Compare(a.token, b.token) })
+		spread := hashed[5].token < uint32(math.MaxUint32-2)
+		for i := 1; i < len(hashed); i++ {
+			spread = spread && hashed[i].token >= hashed[i-1].token+4
+		}
+		if spread {
+			break
+		}
+	}
+	token := func(i int) uint32 { return hashed[i].token }
+
+	// With RF 3: series 0 -> ingesters 0-2, series 1 -> 1-3, series 2-4 -> 2-4,
+	// series 5 -> 5, 0, 1.
+	tokens := [][]uint32{{token(0) + 1}, {token(1) + 1}, {token(4) + 1}, {token(4) + 2}, {token(4) + 3}, {token(5) + 1}}
+	all := make([]labels.Labels, 0, len(hashed))
+	for _, h := range hashed {
+		all = append(all, h.lbls)
+	}
+
+	ds, ingesters, _, _ := prepare(t, prepConfig{
+		numIngesters:      6,
+		happyIngesters:    6,
+		numDistributors:   1,
+		shardByAllLabels:  true,
+		replicationFactor: 3,
+		tokens:            tokens,
+	})
+	// Ingester 0 rejects series 5 and ingester 1 rejects series 1. Series 0 is
+	// sent to both. Hold both until the other ingesters have answered, the order
+	// in which unfixed code answered success.
+	rejections := make(chan struct{})
+	releaseRejections := sync.OnceFunc(func() { close(rejections) })
+	t.Cleanup(releaseRejections)
+	ingesters[0].pushGate = rejections
+	ingesters[0].rejectSeries = rejectSeries(hashed[5].lbls)
+	ingesters[1].pushGate = rejections
+	ingesters[1].rejectSeries = rejectSeries(hashed[1].lbls)
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+	result := make(chan error, 1)
+	go func() {
+		_, err := ds[0].Push(ctx, mockWriteRequest(all, 1, time.Now().UnixMilli(), false))
+		result <- err
+	}()
+	for _, ing := range ingesters[2:] {
+		test.Poll(t, time.Second, 1, func() any { return ing.countCalls("Push") })
+	}
+	releaseRejections()
+
+	err := <-result
+	require.Error(t, err)
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	require.True(t, ok, "not an HTTP error: %v", err)
+	require.Equal(t, int32(http.StatusBadRequest), resp.Code, "unexpected error: %v", err)
+
+	// Every series is stored on at least two of its ingesters, series 0 on all three.
+	for i, h := range hashed {
+		want := 2
+		if i == 0 {
+			want = 3
+		}
+		test.Poll(t, time.Second, true, func() any {
+			stored := 0
+			for _, ing := range ingesters {
+				if _, found := ing.series()[h.token]; found {
+					stored++
+				}
+			}
+			return stored >= want
+		})
 	}
 }
 
@@ -3758,6 +4006,11 @@ type mockIngester struct {
 	calls                 map[string]int
 	lblsValues            []string
 	lastDiscardOutOfOrder bool
+	// pushGate, when set, holds every Push until it is closed. Set before the first Push.
+	pushGate chan struct{}
+	// rejectSeries, when set, makes Push behave like a real ingester rejecting
+	// some series: store the others and fail the whole RPC with 400. Set before the first Push.
+	rejectSeries func([]cortexpb.LabelAdapter) bool
 }
 
 func newMockIngester(id int, ps *prepState, cfg prepConfig) *mockIngester {
@@ -3823,6 +4076,10 @@ func (i *mockIngester) PushStreamConnection(ctx context.Context, in *cortexpb.Wr
 }
 
 func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
+	if i.pushGate != nil {
+		<-i.pushGate
+	}
+
 	i.Lock()
 	defer i.Unlock()
 
@@ -3848,8 +4105,13 @@ func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 		return nil, err
 	}
 
+	var partialErr error
 	for j := range req.Timeseries {
 		series := req.Timeseries[j]
+		if i.rejectSeries != nil && i.rejectSeries(series.Labels) {
+			partialErr = httpgrpc.Errorf(http.StatusBadRequest, "per-metric series limit exceeded")
+			continue
+		}
 		hash := shardByAllLabels(orgid, series.Labels)
 		existing, ok := i.timeseries[hash]
 		if !ok {
@@ -3878,6 +4140,9 @@ func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 		set[*m] = struct{}{}
 	}
 
+	if partialErr != nil {
+		return &cortexpb.WriteResponse{}, partialErr
+	}
 	return &cortexpb.WriteResponse{}, nil
 }
 

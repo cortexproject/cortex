@@ -956,9 +956,7 @@ func TestActiveSeries_CountsAreExactUnderConcurrentRecount(t *testing.T) {
 	)
 
 	// Recount continuously while series are being created.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		<-start
 		for {
 			select {
@@ -968,7 +966,7 @@ func TestActiveSeries_CountsAreExactUnderConcurrentRecount(t *testing.T) {
 				updateMetricsWithRing(c, idleCutoff, ringTokens, 100)
 			}
 		}
-	}()
+	})
 
 	for w := range writers {
 		wg.Add(1)
@@ -1034,9 +1032,7 @@ func TestActiveSeries_TotalsMatchStripesUnderEveryMutation(t *testing.T) {
 	// that the owned counter really moves. It is tracked separately from the
 	// writers, because it only stops once done is closed and the writers have to
 	// be finished before that.
-	recountWG.Add(1)
-	go func() {
-		defer recountWG.Done()
+	recountWG.Go(func() {
 		<-start
 		for i := 0; ; i++ {
 			select {
@@ -1053,7 +1049,7 @@ func TestActiveSeries_TotalsMatchStripesUnderEveryMutation(t *testing.T) {
 			// it removes nothing but still recounts every stripe.
 			c.Purge(now.Add(-4*time.Hour), c.activeCutoff())
 		}
-	}()
+	})
 
 	// Writers create series, half of them native histograms, then delete a third
 	// of what they created through the head's deletion callback.

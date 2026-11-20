@@ -3,6 +3,7 @@ package ring
 import (
 	"encoding/binary"
 	"hash/fnv"
+	"slices"
 	"sort"
 )
 
@@ -147,12 +148,7 @@ func (r *Ring) OwnedTokenPositions(instanceID string, op Operation) ([]uint32, [
 		// Compare instance IDs, not addresses: InstanceDesc carries no ID of its
 		// own, and a ring is keyed by instance ID while Addr is a separate,
 		// different value.
-		for _, id := range instanceIDs {
-			if id == instanceID {
-				owned[position] = true
-				break
-			}
-		}
+		owned[position] = slices.Contains(instanceIDs, instanceID)
 	}
 
 	return topology.tokens, owned, nil

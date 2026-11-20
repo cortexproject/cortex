@@ -129,9 +129,7 @@ func TestIngester_OwnedSeriesLimit_ConcurrentNewSeries(t *testing.T) {
 		other    atomic.Int64
 	)
 	for w := range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for n := range seriesPerWorker {
 				err := push(fmt.Sprintf("concurrent_%d_%d", w, n))
 				switch {
@@ -142,7 +140,7 @@ func TestIngester_OwnedSeriesLimit_ConcurrentNewSeries(t *testing.T) {
 					other.Add(1)
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

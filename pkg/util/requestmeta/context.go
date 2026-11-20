@@ -49,9 +49,12 @@ func ContextWithRequestMetadataMapFromHeaders(ctx context.Context, headers map[s
 	return ContextWithRequestMetadataMap(ctx, headerMap)
 }
 
+// InjectMetadataIntoHTTPRequestHeaders sets the request metadata as headers on the outgoing request.
+// The receiving side only reads the first value of each header, so the metadata taken from the
+// context has to replace any value the caller sent for the same header rather than be appended to it.
 func InjectMetadataIntoHTTPRequestHeaders(requestMetadataMap map[string]string, request *http.Request) {
 	for key, contents := range requestMetadataMap {
-		request.Header.Add(key, contents)
+		request.Header.Set(key, contents)
 	}
 }
 

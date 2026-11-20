@@ -12,12 +12,16 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
 	ErrInvalidOverridesConfiguration = "invalid overrides configuration"
 	ErrFailedToCreateBucketClient    = "failed to create bucket client for overrides"
 )
+
+// LimitsValidator validates the merged limits of a tenant before they are written to the runtime config.
+type LimitsValidator func(userID string, limits *validation.Limits) error
 
 type API struct {
 	services.Service
@@ -26,17 +30,19 @@ type API struct {
 	registerer        prometheus.Registerer
 	bucketClient      objstore.Bucket
 	runtimeConfigPath string
+	validateLimits    LimitsValidator
 }
 
-func New(cfg runtimeconfig.Config, logger log.Logger, registerer prometheus.Registerer) (*API, error) {
+func New(cfg runtimeconfig.Config, validateLimits LimitsValidator, logger log.Logger, registerer prometheus.Registerer) (*API, error) {
 	if err := cfg.StorageConfig.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", ErrInvalidOverridesConfiguration, err)
 	}
 
 	api := &API{
-		cfg:        cfg,
-		logger:     logger,
-		registerer: registerer,
+		cfg:            cfg,
+		logger:         logger,
+		registerer:     registerer,
+		validateLimits: validateLimits,
 	}
 	api.Service = services.NewBasicService(api.starting, api.running, api.stopping)
 	return api, nil

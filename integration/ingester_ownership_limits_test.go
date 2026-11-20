@@ -69,14 +69,21 @@ const (
 	// every series, so an ingester should hold globalSeries * its share.
 	ownershipLimitsGlobalSeries = 4000
 
-	// Below the tenants' global limit, so no ingester should reject a series
-	// when limits follow ownership, and above the equal share of the ingesters
-	// owning the most of a zone, so the equal-share conversion rejects series
-	// for both tenants. The margins either side are about six standard
-	// deviations of how unevenly the series hash over the token space, which is
-	// what sets the scale: a quarter of this many series leaves margins small
-	// enough for that noise to decide the verdict.
-	ownershipLimitsPushedSeries = 3200
+	// Each tenant pushes its whole global limit, so every ingester of its shard
+	// ends up at its own limit and the question is how much of the limit the
+	// tenant can actually use.
+	ownershipLimitsPushedSeries = ownershipLimitsGlobalSeries
+
+	// Ownership-based limits should let a tenant store nearly all of its global
+	// limit. Not all of it: the series do not hash perfectly evenly over the
+	// token space, so an ingester landing marginally over its own limit rejects
+	// a few. Measured at 99.8% and 99.5% for the two tenants.
+	ownershipLimitsMinAccepted = 0.95
+
+	// The equal-share conversion stores far less, because the ingesters owning
+	// the most of a zone are capped at the equal share however much room the
+	// tenant has left. Measured at 83.2% and 75.5%.
+	ownershipLimitsMaxEqualShareAccepted = 0.90
 
 	// Pushed before the ownership shares are awaited, to give every ingester a
 	// TSDB for the tenant: a share is only computed for tenants an ingester
@@ -138,10 +145,6 @@ func TestIngesterRingOwnershipLimits(t *testing.T) {
 	}
 	require.Len(t, sharesByUser[ownershipLimitsSubringUser], ownershipLimitsSubringShard,
 		"the subring tenant's shard should not be the whole ring")
-
-	// Pushing below the global limit means ownership-based limits reject
-	// nothing, whatever the shares are.
-	require.Less(t, ownershipLimitsPushedSeries, ownershipLimitsGlobalSeries)
 
 	// The arms can only differ if the ingester owning the most of a zone goes
 	// past the equal share.
@@ -224,7 +227,7 @@ func TestIngesterRingOwnershipLimits(t *testing.T) {
 				client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", user)
 				require.NoError(t, err)
 
-				pushed, rejected := pushOwnershipLimitsSeries(t, client, seriesLabels, 0, ownershipLimitsSeedSeries)
+				rejected := pushOwnershipLimitsSeriesRejected(t, client, seriesLabels, 0, ownershipLimitsSeedSeries)
 				require.Zero(t, rejected, "the seed push is far below every limit")
 
 				if useOwnership {
@@ -235,8 +238,7 @@ func TestIngesterRingOwnershipLimits(t *testing.T) {
 					time.Sleep(15 * time.Second)
 				}
 
-				morePushed, rejected := pushOwnershipLimitsSeries(t, client, seriesLabels, ownershipLimitsSeedSeries, ownershipLimitsPushedSeries)
-				pushed += morePushed
+				rejected += pushOwnershipLimitsSeriesRejected(t, client, seriesLabels, ownershipLimitsSeedSeries, ownershipLimitsPushedSeries)
 
 				held := map[string]float64{}
 				for id, ingester := range ingesters {
@@ -248,8 +250,6 @@ func TestIngesterRingOwnershipLimits(t *testing.T) {
 						held[id] = values[0]
 					}
 				}
-				t.Logf("%s: accepted=%d series, requests rejected=%d, equal share=%d, series per ingester=%v",
-					user, pushed, rejected, equalShare, held)
 
 				// Only the ingesters in the tenant's shard hold its series.
 				assert.Len(t, held, len(shares))
@@ -257,22 +257,37 @@ func TestIngesterRingOwnershipLimits(t *testing.T) {
 					assert.Contains(t, shares, id, "%s is not in %s's shard", id, user)
 				}
 
-				if useOwnership {
-					assert.Zero(t, rejected, "no series should be rejected below %s's global limit", user)
-					assert.Equal(t, ownershipLimitsPushedSeries, pushed)
+				// Every zone holds one copy of every series the tenant stored,
+				// so a zone's total is how much of its global limit it reached.
+				// A request is counted as rejected as a whole even when some of
+				// its series were written, so the zone totals are what to read,
+				// not the accepted count.
+				storedByZone := ownershipLimitsStoredByZone(instances, held)
+				t.Logf("%s: stored per zone=%v of a %d global limit, equal share=%d, requests rejected=%d, series per ingester=%v",
+					user, storedByZone, ownershipLimitsGlobalSeries, equalShare, rejected, held)
 
-					// Every zone holds one copy of every series, split by ownership.
+				for zone, stored := range storedByZone {
+					if useOwnership {
+						assert.GreaterOrEqual(t, stored, ownershipLimitsMinAccepted*float64(ownershipLimitsGlobalSeries),
+							"%s stored too little of its global limit in %s", user, zone)
+					} else {
+						assert.LessOrEqual(t, stored, ownershipLimitsMaxEqualShareAccepted*float64(ownershipLimitsGlobalSeries),
+							"the equal-share conversion is expected to keep %s below its global limit in %s", user, zone)
+					}
+				}
+
+				if useOwnership {
+					// Each ingester holds about its share of the tenant's series.
 					for id, share := range shares {
-						assert.InDelta(t, float64(pushed)*share, held[id], float64(pushed)*0.06, "ingester %s", id)
+						assert.InDelta(t, float64(ownershipLimitsPushedSeries)*share, held[id], float64(ownershipLimitsPushedSeries)*0.06, "ingester %s", id)
 					}
 					continue
 				}
 
 				// The equal-share conversion gives every ingester in the shard
 				// the same limit, so the ones owning more than their share of a
-				// zone stop accepting series well below the tenant's global limit.
-				assert.Positive(t, rejected, "the equal-share conversion is expected to reject series")
-				assert.Less(t, pushed, ownershipLimitsPushedSeries)
+				// zone are capped there however much room the tenant has left.
+				assert.Positive(t, rejected, "the equal-share conversion is expected to reject requests")
 				for id, share := range shares {
 					if float64(ownershipLimitsPushedSeries)*share <= float64(equalShare) {
 						continue
@@ -353,10 +368,28 @@ func waitForOwnershipShares(t *testing.T, ingesters map[string]*e2ecortex.Cortex
 	}
 }
 
-// pushOwnershipLimitsSeries pushes distinct series with indexes in [from, to)
-// in batches, and returns how many were accepted and how many requests were
-// rejected for exceeding a limit.
-func pushOwnershipLimitsSeries(t *testing.T, client *e2ecortex.Client, seriesLabels []string, from, to int) (pushed, rejected int) {
+// ownershipLimitsStoredByZone sums, per zone, the series its ingesters hold.
+// With a replication factor equal to the number of zones, every zone holds one
+// copy of every series the tenant stored.
+func ownershipLimitsStoredByZone(instances []struct {
+	id     string
+	zone   string
+	tokens ring.Tokens
+}, held map[string]float64) map[string]float64 {
+	byZone := map[string]float64{}
+	for _, instance := range instances {
+		if series, ok := held[instance.id]; ok {
+			byZone[instance.zone] += series
+		}
+	}
+	return byZone
+}
+
+// pushOwnershipLimitsSeriesRejected pushes distinct series with indexes in
+// [from, to) in batches and returns how many requests were rejected for
+// exceeding a limit. How many series were stored is read from the ingesters: a
+// rejected request may still have written some of its series.
+func pushOwnershipLimitsSeriesRejected(t *testing.T, client *e2ecortex.Client, seriesLabels []string, from, to int) (rejected int) {
 	t.Helper()
 	now := time.Now()
 
@@ -376,15 +409,13 @@ func pushOwnershipLimitsSeries(t *testing.T, client *e2ecortex.Client, seriesLab
 
 		switch res.StatusCode {
 		case 200:
-			pushed += size
 		case 400:
 			// A partial write: the series that fit were written and the rest
-			// rejected. The series actually stored are read back from the
-			// ingesters, so only count the request as having lost series.
+			// rejected.
 			rejected++
 		default:
 			require.Failf(t, "unexpected status code pushing series", "got %d", res.StatusCode)
 		}
 	}
-	return pushed, rejected
+	return rejected
 }

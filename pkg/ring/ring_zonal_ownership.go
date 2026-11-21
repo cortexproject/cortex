@@ -7,9 +7,9 @@ const ringHashSpaceSize = float64(maxTokenValue) + 1
 // the hash space each instance owns within its own zone.
 type ZonalOwnershipRing interface {
 	// ZonalOwnership returns, for every instance in the ring, the fraction
-	// of its zone's hash space it owns for writes made with op. See
-	// (*Ring).ZonalOwnership for the exact semantics.
-	ZonalOwnership(op Operation) map[string]float64
+	// of its zone's hash space it owns. See (*Ring).ZonalOwnership for the
+	// exact semantics.
+	ZonalOwnership() map[string]float64
 
 	// ZonesCount returns the number of zones with at least one instance with
 	// tokens. Only when it equals the replication factor does each zone hold
@@ -25,53 +25,46 @@ func (r *Ring) ZonesCount() int {
 }
 
 // ZonalOwnership returns, for every instance in the ring, the fraction of its
-// zone's hash space that op routes to that instance.
+// zone's hash space it owns.
 //
-// Tokens of instances for which op extends the replica set (for example
-// JOINING or LEAVING instances with Write, or READONLY instances with either
-// write operation) are left out: their ranges fall to the next remaining token
-// in the same zone, which is the instance Get extends to. Instances excluded
-// this way report 0. Instances that Get keeps but Filter drops without
-// replacement (such as an ACTIVE instance with a stale heartbeat) keep their
-// tokens, because no other instance in the zone receives those keys.
+// Every instance owns the ranges of its tokens, except READONLY instances:
+// writes skip them, and their ranges fall to the next instance in the same
+// zone, which is the instance Get extends to. READONLY instances report 0.
+// This is where writes go with -distributor.extend-writes=false. With it on,
+// writes also skip JOINING, LEAVING and PENDING instances, which this does not
+// model.
 //
 // The values are the fraction of keys each instance receives only with
 // zone-aware replication and a replication factor equal to ZonesCount. With
 // more replicas than zones, Get puts a second copy in some zones, and with
 // fewer it skips some zones, so callers should not use the values then.
 //
-// The returned map is cached until the ring's tokens or instance states
-// change, and must not be modified.
-func (r *Ring) ZonalOwnership(op Operation) map[string]float64 {
+// The returned map is cached until the ring's tokens change or an instance
+// becomes or stops being READONLY, and must not be modified.
+func (r *Ring) ZonalOwnership() map[string]float64 {
 	r.mtx.RLock()
-	cached, ok := r.zonalOwnershipByOp[op]
+	cached := r.zonalOwnership
 	r.mtx.RUnlock()
-	if ok {
+	if cached != nil {
 		return cached
 	}
 
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
-	if cached, ok := r.zonalOwnershipByOp[op]; ok {
-		return cached
+	if r.zonalOwnership == nil {
+		r.zonalOwnership = r.computeZonalOwnership()
 	}
-
-	ownership := r.computeZonalOwnership(op)
-	if r.zonalOwnershipByOp == nil {
-		r.zonalOwnershipByOp = map[Operation]map[string]float64{}
-	}
-	r.zonalOwnershipByOp[op] = ownership
-	return ownership
+	return r.zonalOwnership
 }
 
 // invalidateZonalOwnership drops the cached ownership. The caller must hold
 // r.mtx for writing.
 func (r *Ring) invalidateZonalOwnership() {
-	r.zonalOwnershipByOp = nil
+	r.zonalOwnership = nil
 }
 
 // computeZonalOwnership must be called with r.mtx held.
-func (r *Ring) computeZonalOwnership(op Operation) map[string]float64 {
+func (r *Ring) computeZonalOwnership() map[string]float64 {
 	ownership := make(map[string]float64, len(r.ringDesc.Ingesters))
 	for id := range r.ringDesc.Ingesters {
 		ownership[id] = 0
@@ -81,7 +74,7 @@ func (r *Ring) computeZonalOwnership(op Operation) map[string]float64 {
 		// Tokens are sorted, so the remaining tokens stay sorted.
 		remaining := make([]uint32, 0, len(zoneTokens))
 		for _, token := range zoneTokens {
-			if r.ownsTokenForWrites(token, op) {
+			if r.ownsToken(token) {
 				remaining = append(remaining, token)
 			}
 		}
@@ -96,18 +89,15 @@ func (r *Ring) computeZonalOwnership(op Operation) map[string]float64 {
 	return ownership
 }
 
-// ownsTokenForWrites reports whether writes made with op stop at the instance
-// holding token, rather than extending past it.
-func (r *Ring) ownsTokenForWrites(token uint32, op Operation) bool {
+// ownsToken reports whether the instance holding token owns its range, that
+// is, whether it is not READONLY.
+func (r *Ring) ownsToken(token uint32) bool {
 	info, ok := r.ringInstanceByToken[token]
 	if !ok {
 		return false
 	}
 	instance, ok := r.ringDesc.Ingesters[info.InstanceID]
-	if !ok {
-		return false
-	}
-	return !op.ShouldExtendReplicaSetOnState(instance.State)
+	return ok && instance.State != READONLY
 }
 
 // ownedRange returns the number of token values in (prev, token], the range

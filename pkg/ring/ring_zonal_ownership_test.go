@@ -83,43 +83,35 @@ func TestRing_ZonalOwnership_HandPickedTokens(t *testing.T) {
 
 	tests := map[string]struct {
 		override map[string]func(*ownershipTestInstance)
-		op       Operation
 		expected map[string]float64
 	}{
 		"all ACTIVE": {
-			op:       Write,
 			expected: map[string]float64{"a1": 0.25, "a2": 0.25, "a3": 0.5},
 		},
-		"JOINING instance is left out with Write": {
+		"JOINING instance keeps its range": {
 			override: map[string]func(*ownershipTestInstance){"a2": withState(JOINING)},
-			op:       Write,
-			expected: map[string]float64{"a1": 0.25, "a2": 0, "a3": 0.75},
-		},
-		"JOINING instance keeps its range with WriteNoExtend": {
-			override: map[string]func(*ownershipTestInstance){"a2": withState(JOINING)},
-			op:       WriteNoExtend,
 			expected: map[string]float64{"a1": 0.25, "a2": 0.25, "a3": 0.5},
 		},
-		"READONLY instance is left out with WriteNoExtend": {
+		"LEAVING and PENDING instances keep their ranges": {
+			override: map[string]func(*ownershipTestInstance){"a1": withState(LEAVING), "a2": withState(PENDING)},
+			expected: map[string]float64{"a1": 0.25, "a2": 0.25, "a3": 0.5},
+		},
+		"READONLY instance is left out": {
 			override: map[string]func(*ownershipTestInstance){"a2": withState(READONLY)},
-			op:       WriteNoExtend,
 			expected: map[string]float64{"a1": 0.25, "a2": 0, "a3": 0.75},
 		},
 		"only one instance left in the zone owns all of it": {
-			override: map[string]func(*ownershipTestInstance){"a1": withState(LEAVING), "a2": withState(PENDING)},
-			op:       Write,
+			override: map[string]func(*ownershipTestInstance){"a1": withState(READONLY), "a2": withState(READONLY)},
 			expected: map[string]float64{"a1": 0, "a2": 0, "a3": 1},
 		},
 		"every instance in the zone left out": {
 			override: map[string]func(*ownershipTestInstance){
 				"a1": withState(READONLY), "a2": withState(READONLY), "a3": withState(READONLY),
 			},
-			op:       Write,
 			expected: map[string]float64{"a1": 0, "a2": 0, "a3": 0},
 		},
 		"ACTIVE instance with a stale heartbeat keeps its range": {
 			override: map[string]func(*ownershipTestInstance){"a2": func(i *ownershipTestInstance) { i.stale = true }},
-			op:       Write,
 			expected: map[string]float64{"a1": 0.25, "a2": 0.25, "a3": 0.5},
 		},
 	}
@@ -128,7 +120,7 @@ func TestRing_ZonalOwnership_HandPickedTokens(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			r := newOwnershipTestRing(t, 2, newOwnershipTestDesc(handPickedInstances(tc.override)))
 
-			got := r.ZonalOwnership(tc.op)
+			got := r.ZonalOwnership()
 
 			expected := map[string]float64{}
 			maps.Copy(expected, balancedZoneB)
@@ -148,7 +140,7 @@ func TestRing_ZonalOwnership_DuplicateTokenOwnsNoExtraRange(t *testing.T) {
 	})
 	r := newOwnershipTestRing(t, 1, desc)
 
-	got := r.ZonalOwnership(Write)
+	got := r.ZonalOwnership()
 
 	assert.InDelta(t, 0.5, got["a1"], ownershipTolerance)
 	assert.InDelta(t, 0.5, got["a2"], ownershipTolerance)
@@ -209,11 +201,11 @@ func TestRing_ZonalOwnership_SumsToOnePerZone(t *testing.T) {
 	instances := randomOwnershipInstances(rnd, zones, perZone, tokensPerInstance, joiningAndReadOnly)
 	r := newOwnershipTestRing(t, zones, newOwnershipTestDesc(instances))
 
-	got := r.ZonalOwnership(Write)
+	got := r.ZonalOwnership()
 
 	sumByZone := map[string]float64{}
 	for _, inst := range instances {
-		if inst.state != ACTIVE {
+		if inst.state == READONLY {
 			assert.Zero(t, got[inst.id], "instance %s is %s", inst.id, inst.state)
 		}
 		sumByZone[inst.zone] += got[inst.id]
@@ -224,87 +216,97 @@ func TestRing_ZonalOwnership_SumsToOnePerZone(t *testing.T) {
 	}
 }
 
-// The ownership must describe where Get actually sends keys: the fraction of
-// random keys Get routes to an instance is its zonal ownership.
+// The ownership must describe where Get sends keys without replica set
+// extension: the fraction of random keys Get routes to an ACTIVE instance is
+// its zonal ownership.
 func TestRing_ZonalOwnership_MatchesWriteRouting(t *testing.T) {
 	const (
 		zones             = 3
 		perZone           = 6
 		tokensPerInstance = 16
 	)
+	rnd := rand.New(rand.NewSource(ownershipTestSeed))
+	instances := randomOwnershipInstances(rnd, zones, perZone, tokensPerInstance, joiningAndReadOnly)
+	r := newOwnershipTestRing(t, zones, newOwnershipTestDesc(instances))
+	ownership := r.ZonalOwnership()
 
-	for name, op := range map[string]Operation{"Write": Write, "WriteNoExtend": WriteNoExtend} {
-		t.Run(name, func(t *testing.T) {
-			rnd := rand.New(rand.NewSource(ownershipTestSeed))
-			instances := randomOwnershipInstances(rnd, zones, perZone, tokensPerInstance, joiningAndReadOnly)
-			r := newOwnershipTestRing(t, zones, newOwnershipTestDesc(instances))
-			ownership := r.ZonalOwnership(op)
+	idByAddr := map[string]string{}
+	for _, inst := range instances {
+		idByAddr[inst.id+"-addr"] = inst.id
+	}
 
-			idByAddr := map[string]string{}
-			for _, inst := range instances {
-				idByAddr[inst.id+"-addr"] = inst.id
-			}
+	received := map[string]int{}
+	bufDescs, bufHosts, bufZones := MakeBuffersForGet()
+	for range routingSampleKeys {
+		set, err := r.Get(rnd.Uint32(), WriteNoExtend, bufDescs, bufHosts, bufZones)
+		require.NoError(t, err)
+		for _, ing := range set.Instances {
+			received[idByAddr[ing.Addr]]++
+		}
+	}
 
-			received := map[string]int{}
-			bufDescs, bufHosts, bufZones := MakeBuffersForGet()
-			for range routingSampleKeys {
-				set, err := r.Get(rnd.Uint32(), op, bufDescs, bufHosts, bufZones)
-				require.NoError(t, err)
-				for _, ing := range set.Instances {
-					received[idByAddr[ing.Addr]]++
-				}
-			}
-
-			for _, inst := range instances {
-				fraction := float64(received[inst.id]) / routingSampleKeys
-				if inst.state != ACTIVE {
-					// Filter never sends writes to non-ACTIVE instances, whatever
-					// ownership says about the range they hold.
-					assert.Zero(t, received[inst.id], "instance %s is %s", inst.id, inst.state)
-					continue
-				}
-				assert.InDelta(t, ownership[inst.id], fraction, routingTolerance, "instance %s", inst.id)
-			}
-		})
+	for _, inst := range instances {
+		fraction := float64(received[inst.id]) / routingSampleKeys
+		if inst.state != ACTIVE {
+			// Filter never sends writes to non-ACTIVE instances, whatever
+			// ownership says about the range they hold.
+			assert.Zero(t, received[inst.id], "instance %s is %s", inst.id, inst.state)
+			continue
+		}
+		assert.InDelta(t, ownership[inst.id], fraction, routingTolerance, "instance %s", inst.id)
 	}
 }
 
 func TestRing_ZonalOwnership_Cached(t *testing.T) {
 	r := newOwnershipTestRing(t, 2, newOwnershipTestDesc(handPickedInstances(nil)))
 
-	first := r.ZonalOwnership(Write)
-	second := r.ZonalOwnership(Write)
+	first := r.ZonalOwnership()
+	second := r.ZonalOwnership()
 
 	assert.Equal(t, reflect.ValueOf(first).Pointer(), reflect.ValueOf(second).Pointer())
 }
 
-func TestRing_ZonalOwnership_InvalidatedOnStateChange(t *testing.T) {
+func TestRing_ZonalOwnership_InvalidatedOnReadOnlyChange(t *testing.T) {
 	r := newOwnershipTestRing(t, 2, newOwnershipTestDesc(handPickedInstances(nil)))
-	require.InDelta(t, 0.25, r.ZonalOwnership(Write)["a2"], ownershipTolerance)
+	require.InDelta(t, 0.25, r.ZonalOwnership()["a2"], ownershipTolerance)
 
 	// Same tokens, different state: updateRingState takes its fast path.
-	r.updateRingState(newOwnershipTestDesc(handPickedInstances(map[string]func(*ownershipTestInstance){"a2": withState(JOINING)})))
+	r.updateRingState(newOwnershipTestDesc(handPickedInstances(map[string]func(*ownershipTestInstance){"a2": withState(READONLY)})))
 
-	got := r.ZonalOwnership(Write)
+	got := r.ZonalOwnership()
 	assert.Zero(t, got["a2"])
 	assert.InDelta(t, 0.75, got["a3"], ownershipTolerance)
 }
 
+func TestRing_ZonalOwnership_KeptOnOtherStateChangesAndHeartbeats(t *testing.T) {
+	r := newOwnershipTestRing(t, 2, newOwnershipTestDesc(handPickedInstances(nil)))
+	first := reflect.ValueOf(r.ZonalOwnership()).Pointer()
+
+	desc := newOwnershipTestDesc(handPickedInstances(map[string]func(*ownershipTestInstance){"a2": withState(LEAVING)}))
+	for id, instance := range desc.Ingesters {
+		instance.Timestamp++
+		desc.Ingesters[id] = instance
+	}
+	r.updateRingState(desc)
+
+	assert.Equal(t, first, reflect.ValueOf(r.ZonalOwnership()).Pointer())
+}
+
 func TestRing_ZonalOwnership_InvalidatedOnTokenChange(t *testing.T) {
 	r := newOwnershipTestRing(t, 2, newOwnershipTestDesc(handPickedInstances(nil)))
-	require.InDelta(t, 0.25, r.ZonalOwnership(Write)["a1"], ownershipTolerance)
+	require.InDelta(t, 0.25, r.ZonalOwnership()["a1"], ownershipTolerance)
 
 	// Moving a1's token from q to q/4 shrinks its range to 1/16 and grows a2's.
 	r.updateRingState(newOwnershipTestDesc(handPickedInstances(map[string]func(*ownershipTestInstance){
 		"a1": func(i *ownershipTestInstance) { i.tokens = []uint32{quarterOfRing / 4} },
 	})))
 
-	got := r.ZonalOwnership(Write)
+	got := r.ZonalOwnership()
 	assert.InDelta(t, 0.0625, got["a1"], ownershipTolerance)
 	assert.InDelta(t, 0.4375, got["a2"], ownershipTolerance)
 }
 
-func TestRing_ZonalOwnership_CachedSubringInvalidatedOnStateChange(t *testing.T) {
+func TestRing_ZonalOwnership_Subrings(t *testing.T) {
 	const (
 		zones             = 2
 		perZone           = 4
@@ -317,7 +319,7 @@ func TestRing_ZonalOwnership_CachedSubringInvalidatedOnStateChange(t *testing.T)
 	r := newOwnershipTestRing(t, zones, newOwnershipTestDesc(instances))
 
 	subring := r.ShuffleShard(tenant, shardSize)
-	subOwnership := subring.(ZonalOwnershipRing).ZonalOwnership(Write)
+	subOwnership := subring.(ZonalOwnershipRing).ZonalOwnership()
 	require.Len(t, subOwnership, shardSize)
 
 	sumByZone := map[string]float64{}
@@ -337,16 +339,25 @@ func TestRing_ZonalOwnership_CachedSubringInvalidatedOnStateChange(t *testing.T)
 	}
 	require.Positive(t, subOwnership[target])
 
-	// Change only the target's state in the parent ring. The subring is served
-	// from the cache with refreshed states, so its ownership must be recomputed.
-	for i := range instances {
-		if instances[i].id == target {
-			instances[i].state = JOINING
+	setTarget := func(state InstanceState) {
+		for i := range instances {
+			if instances[i].id == target {
+				instances[i].state = state
+			}
 		}
+		r.updateRingState(newOwnershipTestDesc(instances))
 	}
-	r.updateRingState(newOwnershipTestDesc(instances))
 
-	cachedSubring := r.ShuffleShard(tenant, shardSize)
-	require.Same(t, subring, cachedSubring, "expected the cached subring")
-	assert.Zero(t, cachedSubring.(ZonalOwnershipRing).ZonalOwnership(Write)[target])
+	// A state change other than READONLY keeps the cached subring and its
+	// ownership.
+	setTarget(LEAVING)
+	cached := r.ShuffleShard(tenant, shardSize)
+	require.Same(t, subring, cached)
+	assert.Equal(t, reflect.ValueOf(subOwnership).Pointer(), reflect.ValueOf(cached.(ZonalOwnershipRing).ZonalOwnership()).Pointer())
+
+	// READONLY resets the subring cache, and the new subring leaves it out.
+	setTarget(READONLY)
+	rebuilt := r.ShuffleShard(tenant, shardSize)
+	require.NotSame(t, subring, rebuilt)
+	assert.Zero(t, rebuilt.(ZonalOwnershipRing).ZonalOwnership()[target])
 }

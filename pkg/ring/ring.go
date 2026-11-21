@@ -208,9 +208,9 @@ type Ring struct {
 	// If set to nil, no caching is done (used by tests, and subrings).
 	shuffledSubringCache map[subringCacheKey]*cachedSubring
 
-	// Cached result of ZonalOwnership, per operation. Nil when not computed or
-	// invalidated by a change of tokens or instance states. Guarded by mtx.
-	zonalOwnershipByOp map[Operation]map[string]float64
+	// Cached result of ZonalOwnership. Nil when not computed, or after a change
+	// of tokens or of which instances are READONLY. Guarded by mtx.
+	zonalOwnership map[string]float64
 
 	memberOwnershipGaugeVec      *prometheus.GaugeVec
 	memberZonalOwnershipGaugeVec *prometheus.GaugeVec
@@ -377,7 +377,8 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 		// when watching the ring for updates).
 		r.mtx.Lock()
 		r.ringDesc = ringDesc
-		if rc != Equal {
+		if rc == EqualButReadOnly {
+			// An instance became or stopped being READONLY.
 			r.invalidateZonalOwnership()
 		}
 		if rc == EqualButReadOnly && r.shuffledSubringCache != nil {
@@ -1068,9 +1069,6 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int, lookbackPer
 	// so zones and tokens are equal.
 	for name, cachedIng := range subring.ringDesc.Ingesters {
 		ing := r.ringDesc.Ingesters[name]
-		if cachedIng.State != ing.State {
-			subring.invalidateZonalOwnership()
-		}
 		cachedIng.State = ing.State
 		cachedIng.Timestamp = ing.Timestamp
 		subring.ringDesc.Ingesters[name] = cachedIng

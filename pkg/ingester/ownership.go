@@ -133,13 +133,6 @@ func (t *tenantOwnership) share(userID string) (float64, bool) {
 	return s, ok && s > 0
 }
 
-// ownershipOp is the operation shares are computed for. It extends the replica
-// set only past READONLY instances, so every other instance owns the ranges of
-// its tokens. That matches -distributor.extend-writes=false; with it on, the
-// ranges of JOINING, LEAVING and PENDING instances are not counted for the
-// instances writes go to instead.
-var ownershipOp = ring.WriteNoExtend
-
 // ownershipRefresher computes tenantOwnership from the desc-fed ring.
 type ownershipRefresher struct {
 	ring                   *ring.Ring
@@ -240,7 +233,7 @@ func (o *ownershipRefresher) computeShare(userID string, shardSize int) tenantSh
 	}
 	return tenantShare{
 		shardSize: shardSize,
-		share:     zonal.ZonalOwnership(ownershipOp)[o.instanceID],
+		share:     zonal.ZonalOwnership()[o.instanceID],
 		zones:     zonal.ZonesCount(),
 	}
 }

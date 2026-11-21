@@ -842,9 +842,15 @@ func (r *Ring) ShuffleShardWithLookback(identifier string, size int, lookbackPer
 	return r.shuffleShardWithCache(identifier, size, lookbackPeriod, now, false)
 }
 
+// ShuffleShardUsesWholeRing reports whether shuffle sharding with shardSize
+// returns the whole ring of instances rather than a subring.
+func ShuffleShardUsesWholeRing(shardSize, instances int) bool {
+	return shardSize <= 0 || instances <= shardSize
+}
+
 func (r *Ring) shuffleShardWithCache(identifier string, size int, lookbackPeriod time.Duration, now time.Time, zoneStableSharding bool) ReadRing {
 	// Nothing to do if the shard size is not smaller than the actual ring.
-	if size <= 0 || r.InstancesCount() <= size {
+	if ShuffleShardUsesWholeRing(size, r.InstancesCount()) {
 		return r
 	}
 

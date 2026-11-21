@@ -201,9 +201,8 @@ func (o *ownershipRefresher) refresh(userIDs []string) {
 		if o.shuffleShardingEnabled {
 			size = o.limits.IngestionTenantShardSize(userID)
 		}
-		// ShuffleShard uses the whole ring once the shard covers it, which an
-		// instance joining or leaving any zone can change.
-		wholeRing := size <= 0 || instances <= size
+		// An instance joining or leaving any zone can change this.
+		wholeRing := ring.ShuffleShardUsesWholeRing(size, instances)
 		t, ok := o.tenants[userID]
 		if o.generation == nil || !ok || t.generation != generation || t.shardSize != size || t.wholeRing != wholeRing {
 			t = o.computeShare(userID, size)

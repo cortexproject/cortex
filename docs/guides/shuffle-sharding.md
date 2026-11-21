@@ -93,15 +93,15 @@ Assuming shuffle-sharding has been enabled for the write path, to enable shuffle
 
 - `-distributor.sharding-strategy=shuffle-sharding`
 - `-distributor.ingestion-tenant-shard-size=<size>`
-- `-querier.shuffle-sharding-ingesters-lookback-period=<period>`<br />
-  Queriers and rulers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. The configured lookback `<period>` should be greater than or equal to `-querier.query-store-after` and `-querier.query-ingesters-within` if set, and greater than the estimated minimum time it takes for the oldest samples stored in a block uploaded by ingester to be discovered and available for querying (3h with the default configuration).
+- `-limits.shuffle-sharding-ingesters-lookback-period=<period>`<br />
+  Queriers and rulers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. The configured lookback `<period>` should be greater than or equal to `-limits.query-store-after` and `-limits.query-ingesters-within` if set, and greater than the estimated minimum time it takes for the oldest samples stored in a block uploaded by ingester to be discovered and available for querying (3h with the default configuration).
 
 #### Rollout strategy
 
 If you're running a Cortex cluster with shuffle-sharding disabled and you want to enable it for ingesters, the following rollout strategy should be used to avoid missing querying any time-series in the ingesters’ memory:
 
 1. Enable ingesters shuffle-sharding on the **write path**
-2. **Wait** at least `-querier.shuffle-sharding-ingesters-lookback-period` time
+2. **Wait** at least `-limits.shuffle-sharding-ingesters-lookback-period` time
 3. Enable ingesters shuffle-sharding on the **read path**
 
 #### Limitation: decreasing the tenant shard size
@@ -113,7 +113,7 @@ The problem is that if a tenant’s subring decreases in size, there is currentl
 This is deemed an infrequent operation that we considered banning, but a workaround still exists:
 1. **Disable** shuffle-sharding on the read path
 2. **Decrease** the configured tenant shard size
-3. **Wait** at least `-querier.shuffle-sharding-ingesters-lookback-period` time
+3. **Wait** at least `-limits.shuffle-sharding-ingesters-lookback-period` time
 4. **Re-enable** shuffle-sharding on the read path
 
 ### Query-frontend and Query-scheduler shuffle sharding

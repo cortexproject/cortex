@@ -48,7 +48,7 @@ Given a query, the querier analyzes the `start` and `end` time range to compute 
 
 The request sent to each store-gateway contains the list of block IDs that are expected to be queried, and the response sent back by the store-gateway to the querier contains the list of block IDs that were actually queried. This list may be a subset of the requested blocks, for example due to recent blocks resharding event (ie. last few seconds). The querier runs a consistency check on responses received from the store-gateways to ensure all expected blocks have been queried; if not, the querier retries to fetch samples from missing blocks from different store-gateways (if the `-store-gateway.sharding-ring.replication-factor` is greater than `1`) and if the consistency check fails after all retries, the query execution fails as well (correctness is always guaranteed).
 
-If the query time range covers a period within `-querier.query-ingesters-within` duration, the querier also sends the request to all ingesters, in order to fetch samples that have not been uploaded to the long-term storage yet.
+If the query time range covers a period within `-limits.query-ingesters-within` duration, the querier also sends the request to all ingesters, in order to fetch samples that have not been uploaded to the long-term storage yet.
 
 Once all samples have been fetched from both store-gateways and ingesters, the querier proceeds with running the PromQL engine to execute the query and send back the result to the client.
 
@@ -2070,9 +2070,9 @@ blocks_storage:
     [ignore_deletion_mark_delay: <duration> | default = 6h]
 
     # The blocks created since `now() - ignore_blocks_within` will not be
-    # synced. This should be used together with `-querier.query-store-after` to
+    # synced. This should be used together with `-limits.query-store-after` to
     # filter out the blocks that are too new to be queried. A reasonable value
-    # for this flag would be `-querier.query-store-after -
+    # for this flag would be `-limits.query-store-after -
     # blocks-storage.bucket-store.bucket-index.max-stale-period` to give some
     # buffer. 0 to disable.
     # CLI flag: -blocks-storage.bucket-store.ignore-blocks-within

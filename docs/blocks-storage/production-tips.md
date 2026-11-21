@@ -47,14 +47,14 @@ When running Cortex blocks storage cluster at scale, querying non compacted bloc
 Because of this, we would suggest to avoid querying non compacted blocks. In order to do it, you should:
 
 1. Run the [compactor](./compactor.md)
-1. Configure queriers `-querier.query-store-after` large enough to give compactor enough time to compact newly uploaded blocks (_see below_)
-1. Configure queriers `-querier.query-ingesters-within` equal to `-querier.query-store-after` plus 5m (5 minutes is just a delta to query the boundary both from ingesters and queriers)
-1. Configure ingesters `-blocks-storage.tsdb.retention-period` at least as `-querier.query-ingesters-within`
+1. Configure queriers `-limits.query-store-after` large enough to give compactor enough time to compact newly uploaded blocks (_see below_)
+1. Configure queriers `-limits.query-ingesters-within` equal to `-limits.query-store-after` plus 5m (5 minutes is just a delta to query the boundary both from ingesters and queriers)
+1. Configure ingesters `-blocks-storage.tsdb.retention-period` at least as `-limits.query-ingesters-within`
 1. Lower `-blocks-storage.bucket-store.ignore-deletion-marks-delay` to 1h, otherwise non compacted blocks could be queried anyway, even if their compacted replacement is available
 
-#### How to estimate `-querier.query-store-after`
+#### How to estimate `-limits.query-store-after`
 
-The `-querier.query-store-after` should be set to a duration large enough to give compactor enough time to compact newly uploaded blocks, and queriers and store-gateways to discover and sync newly compacted blocks.
+The `-limits.query-store-after` should be set to a duration large enough to give compactor enough time to compact newly uploaded blocks, and queriers and store-gateways to discover and sync newly compacted blocks.
 
 The following diagram shows all the timings involved in the estimation. This diagram should be used only as a template and you're expected to tweak the assumptions based on real measurements in your Cortex cluster. In this example, the following assumptions have been made:
 

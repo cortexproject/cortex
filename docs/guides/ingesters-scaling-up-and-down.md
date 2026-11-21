@@ -15,7 +15,7 @@ Adding more ingesters to a Cortex cluster is considered a safe operation. When a
 Ingesters that were previously receiving those series will see data stop arriving and will consider those series "idle".
 
 If you run with `-distributor.shard-by-all-labels=false` (the default), before adding a second ingester, you have to wait until data has migrated from idle series to the back-end store; otherwise, you will see gaps in queries. This will happen after the next "head compaction" (typically every 2 hours).
-If you have set `-querier.query-store-after`, then that is also a minimum time you have to wait before adding a second ingester.
+If you have set `-limits.query-store-after`, then that is also a minimum time you have to wait before adding a second ingester.
 
 If you run with `-distributor.shard-by-all-labels=true`,
 no special care is required to take when scaling up ingesters.
@@ -58,7 +58,7 @@ The READONLY state allows ingesters to:
 
 3. **Wait for safe removal window**
    - **Immediate removal** (after step 1): Safe once queries no longer need the ingester's data
-   - **Conservative approach**: Wait for `querier.query-ingesters-within` duration (e.g., 5 hours)
+   - **Conservative approach**: Wait for `limits.query-ingesters-within` duration (e.g., 5 hours)
    - **Complete data aging**: Wait for full retention period to ensure all blocks are removed
 
 4. **Remove ingesters**
@@ -69,7 +69,7 @@ The READONLY state allows ingesters to:
 
 #### Timeline Example
 
-For a cluster with `querier.query-ingesters-within=5h`:
+For a cluster with `limits.query-ingesters-within=5h`:
 
 - **T0**: Set ingesters 5, 6, 7 to READONLY state
 - **T1**: Ingesters stop receiving new data but continue serving queries

@@ -51,7 +51,8 @@ func (w *Updater) EnableParquet() *Updater {
 
 // UpdateIndex generates the bucket index and returns it, without storing it to the storage.
 // If the old index is not passed in input, then the bucket index will be generated from scratch.
-func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid.ULID]error, int64, error) {
+// The returned set holds the blocks marked for no compaction, which the index does not carry.
+func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid.ULID]error, map[ulid.ULID]struct{}, error) {
 	var (
 		oldBlocks             []*Block
 		oldBlockDeletionMarks []*BlockDeletionMark
@@ -63,18 +64,18 @@ func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid
 		oldBlockDeletionMarks = old.BlockDeletionMarks
 	}
 
-	blockDeletionMarks, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, err := w.updateBlockMarks(ctx, oldBlockDeletionMarks)
+	blockDeletionMarks, deletedBlocks, blocksMarkedForNoCompaction, err := w.updateBlockMarks(ctx, oldBlockDeletionMarks)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, nil, err
 	}
 
 	blocks, partials, err := w.updateBlocks(ctx, oldBlocks, deletedBlocks)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, nil, err
 	}
 	if w.parquetEnabled {
 		if err := w.updateParquetBlocks(ctx, blocks); err != nil {
-			return nil, nil, 0, err
+			return nil, nil, nil, err
 		}
 	}
 
@@ -83,7 +84,7 @@ func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid
 		Blocks:             blocks,
 		BlockDeletionMarks: blockDeletionMarks,
 		UpdatedAt:          time.Now().Unix(),
-	}, partials, totalBlocksBlocksMarkedForNoCompaction, nil
+	}, partials, blocksMarkedForNoCompaction, nil
 }
 
 func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks map[ulid.ULID]struct{}) (blocks []*Block, partials map[ulid.ULID]error, _ error) {
@@ -216,11 +217,11 @@ func (w *Updater) updateParquetBlockIndexEntry(ctx context.Context, id ulid.ULID
 	return nil
 }
 
-func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark) ([]*BlockDeletionMark, map[ulid.ULID]struct{}, int64, error) {
+func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark) ([]*BlockDeletionMark, map[ulid.ULID]struct{}, map[ulid.ULID]struct{}, error) {
 	out := make([]*BlockDeletionMark, 0, len(old))
 	deletedBlocks := map[ulid.ULID]struct{}{}
 	discovered := map[ulid.ULID]struct{}{}
-	totalBlocksBlocksMarkedForNoCompaction := int64(0)
+	blocksMarkedForNoCompaction := map[ulid.ULID]struct{}{}
 
 	// Find all markers in the storage.
 	err := w.bkt.Iter(ctx, MarkersPathname+"/", func(name string) error {
@@ -228,14 +229,14 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 			discovered[blockID] = struct{}{}
 		}
 
-		if _, ok := IsBlockNoCompactMarkFilename(path.Base(name)); ok {
-			totalBlocksBlocksMarkedForNoCompaction++
+		if blockID, ok := IsBlockNoCompactMarkFilename(path.Base(name)); ok {
+			blocksMarkedForNoCompaction[blockID] = struct{}{}
 		}
 
 		return nil
 	})
 	if err != nil {
-		return nil, nil, totalBlocksBlocksMarkedForNoCompaction, errors.Wrap(err, "list block deletion marks")
+		return nil, nil, blocksMarkedForNoCompaction, errors.Wrap(err, "list block deletion marks")
 	}
 
 	// Since deletion marks are immutable, all markers already existing in the index can just be copied.
@@ -262,13 +263,13 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 			continue
 		}
 		if err != nil {
-			return nil, nil, totalBlocksBlocksMarkedForNoCompaction, err
+			return nil, nil, blocksMarkedForNoCompaction, err
 		}
 
 		out = append(out, m)
 	}
 
-	return out, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, nil
+	return out, deletedBlocks, blocksMarkedForNoCompaction, nil
 }
 
 // deleteOrphanedGlobalDeletionMark removes the block deletion mark from the global markers location

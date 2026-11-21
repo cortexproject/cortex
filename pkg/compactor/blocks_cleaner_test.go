@@ -1172,7 +1172,7 @@ func TestBlocksCleaner_ParquetMetrics(t *testing.T) {
 			Name: "cortex_compactor_remaining_planned_compactions",
 			Help: "Total number of remaining planned compactions.",
 		},
-		[]string{"user"},
+		append(commonLabels, compactionLabels...),
 	)
 
 	// Create the blocks cleaner
@@ -1226,7 +1226,7 @@ func TestBlocksCleaner_ParquetMetrics(t *testing.T) {
 	}
 
 	// Update metrics
-	cleaner.updateBucketMetrics("user1", true, idx, 0, 0)
+	cleaner.updateBucketMetrics("user1", true, idx, 0, nil)
 
 	// Verify metrics
 	require.NoError(t, prom_testutil.CollectAndCompare(cleaner.tenantParquetBlocks, strings.NewReader(`
@@ -1252,6 +1252,7 @@ func TestBlocksCleaner_EmitUserMetrics(t *testing.T) {
 		CleanupConcurrency: 1,
 		ShardingStrategy:   util.ShardingStrategyShuffle,
 		CompactionStrategy: util.CompactionStrategyPartitioning,
+		BlockRanges:        []int64{2 * time.Hour.Milliseconds(), 12 * time.Hour.Milliseconds(), 24 * time.Hour.Milliseconds()},
 	}
 
 	ctx := context.Background()
@@ -1265,8 +1266,8 @@ func TestBlocksCleaner_EmitUserMetrics(t *testing.T) {
 	dummyCounterVec := prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"test"})
 	remainingPlannedCompactions := promauto.With(registry).NewGaugeVec(prometheus.GaugeOpts{
 		Name: "cortex_compactor_remaining_planned_compactions",
-		Help: "Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy",
-	}, commonLabels)
+		Help: "Total number of plans that remain to be compacted, per compaction time range. Only available with shuffle-sharding strategy",
+	}, append(commonLabels, compactionLabels...))
 
 	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, 15*time.Minute, cfgProvider, logger, "test-cleaner", registry, time.Minute, 30*time.Second, dummyCounterVec, remainingPlannedCompactions)
 
@@ -1355,15 +1356,100 @@ func TestBlocksCleaner_EmitUserMetrics(t *testing.T) {
         # HELP cortex_compactor_in_progress_compactions Total number of in progress compactions. Only available with shuffle-sharding strategy and partitioning compaction strategy
 		# TYPE cortex_compactor_in_progress_compactions gauge
 		cortex_compactor_in_progress_compactions{user="user-1"} 1
-		# HELP cortex_compactor_oldest_partition_offset Time in seconds between now and the oldest created partition group not completed. Only available with shuffle-sharding strategy and partitioning compaction strategy
+		# HELP cortex_compactor_oldest_partition_offset Time in seconds between now and the oldest created partition group not completed, per compaction time range. Only available with shuffle-sharding strategy and partitioning compaction strategy
 		# TYPE cortex_compactor_oldest_partition_offset gauge
-		cortex_compactor_oldest_partition_offset{user="user-1"} 3600
-        # HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
+		cortex_compactor_oldest_partition_offset{time_range_milliseconds="7200000",user="user-1"} 3600
+		cortex_compactor_oldest_partition_offset{time_range_milliseconds="43200000",user="user-1"} 0
+		cortex_compactor_oldest_partition_offset{time_range_milliseconds="86400000",user="user-1"} 0
+        # HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted, per compaction time range. Only available with shuffle-sharding strategy
 		# TYPE cortex_compactor_remaining_planned_compactions gauge
-		cortex_compactor_remaining_planned_compactions{user="user-1"} 3
+		cortex_compactor_remaining_planned_compactions{time_range_milliseconds="7200000",user="user-1"} 3
+		cortex_compactor_remaining_planned_compactions{time_range_milliseconds="43200000",user="user-1"} 0
+		cortex_compactor_remaining_planned_compactions{time_range_milliseconds="86400000",user="user-1"} 0
 	`
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
+}
+
+func TestOldestLevel1BlockOffsetSeconds(t *testing.T) {
+	now := time.Unix(1_000_000, 0)
+	block := func(id uint64, compactionLevel int, uploadedMinutesAgo int64) *bucketindex.Block {
+		return &bucketindex.Block{
+			ID:              ulid.MustNew(id, nil),
+			CompactionLevel: compactionLevel,
+			UploadedAt:      now.Add(-time.Duration(uploadedMinutesAgo) * time.Minute).Unix(),
+		}
+	}
+
+	tests := map[string]struct {
+		idx                         *bucketindex.Index
+		blocksMarkedForNoCompaction map[ulid.ULID]struct{}
+		expected                    float64
+	}{
+		"no blocks": {
+			idx:      &bucketindex.Index{},
+			expected: 0,
+		},
+		"no level 1 block": {
+			idx: &bucketindex.Index{Blocks: bucketindex.Blocks{
+				block(1, 2, 600),
+				block(2, 3, 900),
+			}},
+			expected: 0,
+		},
+		"reports the oldest level 1 block": {
+			idx: &bucketindex.Index{Blocks: bucketindex.Blocks{
+				block(1, 1, 30),
+				block(2, 1, 120),
+				block(3, 2, 900),
+			}},
+			expected: 120 * 60,
+		},
+		"skips a level 1 block marked for deletion": {
+			idx: &bucketindex.Index{
+				Blocks: bucketindex.Blocks{
+					block(1, 1, 30),
+					block(2, 1, 120),
+				},
+				BlockDeletionMarks: bucketindex.BlockDeletionMarks{
+					{ID: ulid.MustNew(2, nil)},
+				},
+			},
+			expected: 30 * 60,
+		},
+		"skips a level 1 block marked for no compaction": {
+			idx: &bucketindex.Index{Blocks: bucketindex.Blocks{
+				block(1, 1, 30),
+				block(2, 1, 120),
+			}},
+			blocksMarkedForNoCompaction: map[ulid.ULID]struct{}{
+				ulid.MustNew(2, nil): {},
+			},
+			expected: 30 * 60,
+		},
+		"reports 0 when every level 1 block is marked for no compaction": {
+			idx: &bucketindex.Index{Blocks: bucketindex.Blocks{
+				block(1, 1, 600),
+			}},
+			blocksMarkedForNoCompaction: map[ulid.ULID]struct{}{
+				ulid.MustNew(1, nil): {},
+			},
+			expected: 0,
+		},
+		"skips an entry whose compaction level is unknown": {
+			idx: &bucketindex.Index{Blocks: bucketindex.Blocks{
+				block(1, 0, 600),
+				block(2, 1, 30),
+			}},
+			expected: 30 * 60,
+		},
+	}
+
+	for name, testData := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, testData.expected, oldestLevel1BlockOffsetSeconds(testData.idx, testData.blocksMarkedForNoCompaction, now))
+		})
+	}
 }
 
 type mockConfigProvider struct {

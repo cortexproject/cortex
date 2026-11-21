@@ -208,9 +208,9 @@ type Ring struct {
 	// If set to nil, no caching is done (used by tests, and subrings).
 	shuffledSubringCache map[subringCacheKey]*cachedSubring
 
-	// Cached result of ZonalOwnership, per operation. Nil when not computed or
-	// invalidated by a change of tokens or instance states. Guarded by mtx.
-	zonalOwnershipByOp map[Operation]map[string]float64
+	// Cached result of ZonalOwnership. Nil when not computed, or after a change
+	// of tokens or of which instances are READONLY. Guarded by mtx.
+	zonalOwnership map[string]float64
 
 	memberOwnershipGaugeVec      *prometheus.GaugeVec
 	memberZonalOwnershipGaugeVec *prometheus.GaugeVec
@@ -377,7 +377,8 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 		// when watching the ring for updates).
 		r.mtx.Lock()
 		r.ringDesc = ringDesc
-		if rc != Equal {
+		if rc == EqualButReadOnly {
+			// An instance became or stopped being READONLY.
 			r.invalidateZonalOwnership()
 		}
 		if rc == EqualButReadOnly && r.shuffledSubringCache != nil {
@@ -842,9 +843,15 @@ func (r *Ring) ShuffleShardWithLookback(identifier string, size int, lookbackPer
 	return r.shuffleShardWithCache(identifier, size, lookbackPeriod, now, false)
 }
 
+// ShuffleShardUsesWholeRing reports whether shuffle sharding with shardSize
+// returns the whole ring of instances rather than a subring.
+func ShuffleShardUsesWholeRing(shardSize, instances int) bool {
+	return shardSize <= 0 || instances <= shardSize
+}
+
 func (r *Ring) shuffleShardWithCache(identifier string, size int, lookbackPeriod time.Duration, now time.Time, zoneStableSharding bool) ReadRing {
 	// Nothing to do if the shard size is not smaller than the actual ring.
-	if size <= 0 || r.InstancesCount() <= size {
+	if ShuffleShardUsesWholeRing(size, r.InstancesCount()) {
 		return r
 	}
 
@@ -1062,9 +1069,6 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int, lookbackPer
 	// so zones and tokens are equal.
 	for name, cachedIng := range subring.ringDesc.Ingesters {
 		ing := r.ringDesc.Ingesters[name]
-		if cachedIng.State != ing.State {
-			subring.invalidateZonalOwnership()
-		}
 		cachedIng.State = ing.State
 		cachedIng.Timestamp = ing.Timestamp
 		subring.ringDesc.Ingesters[name] = cachedIng

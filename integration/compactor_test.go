@@ -107,7 +107,9 @@ func TestCompactorMergesBlocks(t *testing.T) {
 			for _, b := range tc.blocks {
 				lbls := make([]labels.Labels, 0, len(b.series))
 				for _, name := range b.series {
-					lbls = append(lbls, labels.FromStrings("__name__", name, "job", "test"))
+					// count_over_time drops the metric name, so keep the series
+					// apart with another label.
+					lbls = append(lbls, labels.FromStrings("__name__", name, "job", "test", "series", name))
 				}
 				id, err := e2e.CreateBlock(ctx, rnd, dir, lbls, 60, b.mint, b.maxt, time.Minute.Milliseconds(), 10)
 				require.NoError(t, err)

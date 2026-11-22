@@ -1,6 +1,8 @@
 package tripperware
 
 import (
+	"context"
+	"math"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -677,6 +679,60 @@ func Test_sortPlanForQuery(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.expectedPlan, p)
+			}
+		})
+	}
+}
+
+func Test_hasUnmergeableSortOrder(t *testing.T) {
+	for query, expected := range map[string]bool{
+		"sort(sum by (job) (up))":                          false,
+		"1 + sort_desc(sum by (job) (up))":                 false,
+		"sort(sum by (job) (up)) + 1":                      false,
+		"sort(sum by (job) (up)) - 1":                      false,
+		"sort_desc(sum by (job) (up)) > 0.5":               false,
+		"sum by (job) (up) * 2":                            false,
+		"0 - sort(sum by (job) (up))":                      true,
+		"100 - sort_desc(sum by (job) (up))":               true,
+		"sort(sum by (job) (up)) * -1":                     true,
+		"sort(sum by (job) (up)) > bool 0.5":               true,
+		"sort(sum by (job) (up)) + sum by (job) (up)":      true,
+		"sum by (job) (up) - sort_desc(sum by (job) (up))": true,
+	} {
+		t.Run(query, func(t *testing.T) {
+			assert.Equal(t, expected, hasUnmergeableSortOrder(query))
+		})
+	}
+}
+
+func TestVectorMergeSortNaNLast(t *testing.T) {
+	vector := func(vals map[string]float64) *PrometheusResponse {
+		samples := make([]Sample, 0, len(vals))
+		for job, v := range vals {
+			samples = append(samples, Sample{
+				Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("job", job)),
+				Sample: &cortexpb.Sample{Value: v},
+			})
+		}
+		return &PrometheusResponse{Data: PrometheusData{Result: PrometheusQueryResult{Result: &PrometheusQueryResult_Vector{Vector: &Vector{Samples: samples}}}}}
+	}
+	shards := []*PrometheusResponse{
+		vector(map[string]float64{"a": math.NaN(), "d": 3}),
+		vector(map[string]float64{"b": 1, "c": 2, "e": math.NaN()}),
+	}
+	for query, expected := range map[string][]string{
+		"sort(sum by (job) (up))":      {"b", "c", "d", "a", "e"},
+		"sort_desc(sum by (job) (up))": {"d", "c", "b", "a", "e"},
+	} {
+		t.Run(query, func(t *testing.T) {
+			for range 20 {
+				res, err := vectorMerge(context.Background(), &PrometheusRequest{Query: query}, shards)
+				assert.NoError(t, err)
+				jobs := make([]string, 0, len(res.Samples))
+				for _, s := range res.Samples {
+					jobs = append(jobs, cortexpb.FromLabelAdaptersToLabels(s.Labels).Get("job"))
+				}
+				assert.Equal(t, expected, jobs)
 			}
 		})
 	}

@@ -3,6 +3,7 @@ package tripperware
 import (
 	"context"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 
@@ -199,11 +200,19 @@ func vectorMerge(ctx context.Context, req Request, resps []*PrometheusResponse) 
 	// Then the sorting behavior is undefined. Prometheus doesn't handle it.
 	sort.Slice(samples, func(i, j int) bool {
 		// Order is determined by vector.
-		switch sortPlan {
-		case sortByValuesAsc:
-			return getSortValueFromPair(samples, i) < getSortValueFromPair(samples, j)
-		case sortByValuesDesc:
-			return getSortValueFromPair(samples, i) > getSortValueFromPair(samples, j)
+		if sortPlan == sortByValuesAsc || sortPlan == sortByValuesDesc {
+			vi, vj := getSortValueFromPair(samples, i), getSortValueFromPair(samples, j)
+			// NaN sorts last for both sort and sort_desc, like Prometheus does.
+			if nanI, nanJ := math.IsNaN(vi), math.IsNaN(vj); nanI || nanJ {
+				if nanI != nanJ {
+					return nanJ
+				}
+			} else if vi != vj {
+				if sortPlan == sortByValuesAsc {
+					return vi < vj
+				}
+				return vi > vj
+			}
 		}
 		return samples[i].metric < samples[j].metric
 	})
@@ -342,6 +351,41 @@ func sortPlanForQuery(q string) (sortPlan, error) {
 		}
 	}
 	return sortByLabels, nil
+}
+
+// hasUnmergeableSortOrder returns true if q is a binary expression with a sort or sort_desc
+// operand whose order can't be restored when merging sharded results. Prometheus keeps the
+// order of the sorted operand, which only matches the value order of the result when the
+// operation preserves it, as when adding a scalar, subtracting one from the sorted vector or
+// filtering by one.
+func hasUnmergeableSortOrder(q string) bool {
+	expr, err := cortexparser.ParseExpr(q)
+	if err != nil {
+		return false
+	}
+	bin, ok := expr.(*promqlparser.BinaryExpr)
+	if !ok {
+		return false
+	}
+	isSort := func(expr promqlparser.Expr) bool {
+		n, ok := expr.(*promqlparser.Call)
+		return ok && n.Func != nil && (n.Func.Name == "sort" || n.Func.Name == "sort_desc")
+	}
+	lhsSort, rhsSort := isSort(bin.LHS), isSort(bin.RHS)
+	if !lhsSort && !rhsSort {
+		return false
+	}
+	if bin.Op.IsComparisonOperator() && !bin.ReturnBool {
+		// Filtering by a scalar keeps the values and their order.
+		return bin.LHS.Type() != promqlparser.ValueTypeScalar && bin.RHS.Type() != promqlparser.ValueTypeScalar
+	}
+	switch bin.Op {
+	case promqlparser.ADD:
+		return bin.LHS.Type() != promqlparser.ValueTypeScalar && bin.RHS.Type() != promqlparser.ValueTypeScalar
+	case promqlparser.SUB:
+		return !lhsSort || bin.RHS.Type() != promqlparser.ValueTypeScalar
+	}
+	return true
 }
 
 // mergeSampleStreams deduplicates sample streams using a map.

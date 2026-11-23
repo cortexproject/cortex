@@ -40,7 +40,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/hashicorp/memberlist v0.6.0
 	github.com/json-iterator/go v1.1.12
-	github.com/klauspost/compress v1.19.1
+	github.com/klauspost/compress v1.20.2
 	github.com/minio/minio-go/v7 v7.2.1
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
@@ -73,7 +73,7 @@ require (
 	// Pinned to main: promql-engine's api.RemoteEndpoints gained mint/maxt parameters on
 	// Engines(), and thanos/pkg/query implements that interface. The newest tag (v0.42.4,
 	// 146 commits behind main) predates the change, so downgrading breaks the build.
-	github.com/thanos-io/thanos v0.42.5-0.20261008195948-dd67d9cc81c3
+	github.com/thanos-io/thanos v0.42.5-0.20261123081354-9d58b7a93550
 	github.com/tjhop/slog-gokit v0.2.2
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
@@ -159,7 +159,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-chi/chi/v5 v5.2.4 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.9 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

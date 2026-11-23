@@ -1,10 +1,13 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"google.golang.org/grpc/status"
 )
 
 type validationError struct {
@@ -45,3 +48,18 @@ func (e *validationError) Error() string {
 func wrapWithUser(err error, userID string) error {
 	return fmt.Errorf("user=%s: %s", userID, err)
 }
+
+// unloggedError wraps an error that is returned to the distributor but that the gRPC server should
+// not log. It keeps the gRPC status of the wrapped error, so the response on the wire is unchanged.
+type unloggedError struct {
+	err error
+}
+
+func (e unloggedError) Error() string { return e.err.Error() }
+
+func (e unloggedError) Unwrap() error { return e.err }
+
+func (e unloggedError) GRPCStatus() *status.Status { return status.Convert(e.err) }
+
+// ShouldLog implements middleware.OptionalLogging.
+func (unloggedError) ShouldLog(context.Context, time.Duration) bool { return false }

@@ -120,16 +120,16 @@ type ownershipRefresher struct {
 	shareGauge             *prometheus.GaugeVec
 	computations           prometheus.Counter
 
-	// generation returns a value that changes whenever the ring may give this
-	// ingester a different share. Nil recomputes every share on each refresh.
+	// generation returns a value that changes whenever the ring changes in a
+	// way that can move a shuffle-shard pick or a share.
 	generation func() uint64
 
-	// The last share computed per tenant. Only touched by refresh.
-	tenants map[string]tenantShare
+	// Only touched by refresh.
+	lastGeneration uint64
+	tenants        map[string]tenantShare
 }
 
 type tenantShare struct {
-	generation  uint64
 	shardSize   int
 	fingerprint uint64
 	share       float64
@@ -139,7 +139,13 @@ type tenantShare struct {
 	unsure bool
 }
 
+// newOwnershipRefresher returns a refresher reading generation to tell whether
+// the ring changed. A nil generation makes every refresh check every tenant.
 func newOwnershipRefresher(r *ring.Ring, instanceID string, shuffleShardingEnabled bool, limits *validation.Overrides, registerer prometheus.Registerer, generation func() uint64) *ownershipRefresher {
+	if generation == nil {
+		var n uint64
+		generation = func() uint64 { n++; return n }
+	}
 	return &ownershipRefresher{
 		ring:                   r,
 		instanceID:             instanceID,
@@ -152,7 +158,7 @@ func newOwnershipRefresher(r *ring.Ring, instanceID string, shuffleShardingEnabl
 		}, []string{"user"}),
 		computations: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ring_ownership_computations_total",
-			Help: "Number of times a tenant's ring ownership share was computed.",
+			Help: "Number of times a ring ownership share was computed.",
 		}),
 		generation: generation,
 	}
@@ -160,72 +166,106 @@ func newOwnershipRefresher(r *ring.Ring, instanceID string, shuffleShardingEnabl
 
 func (o *ownershipRefresher) refresh(userIDs []string) {
 	if o.ring.InstancesCount() == 0 {
-		// No heartbeat has fed the ring yet.
-		return
+		return // No heartbeat has fed the ring yet.
 	}
-	// Read before computing, so a ring change during the refresh makes the next
-	// one recompute.
-	var generation uint64
-	if o.generation != nil {
-		generation = o.generation()
-	}
+	// Read first, so a change during this refresh is seen by the next one.
+	generation := o.generation()
+	ringChanged := generation != o.lastGeneration
+	o.lastGeneration = generation
 	// A token shared by two zones lets an instance outside a tenant's subring
 	// decide this zone's ownership, which the fingerprint does not cover.
 	duplicates := o.ring.HasDuplicateTokens()
 
-	// The whole ring is read live, so its fingerprint and share are taken
-	// once per refresh and kept only if the ring did not change in between.
-	var wholeRing *tenantShare
+	w := wholeRingMemo{o: o}
 	tenants := make(map[string]tenantShare, len(userIDs))
-	shares := make(map[string]float64, len(userIDs))
 	for _, userID := range userIDs {
-		size := 0
-		if o.shuffleShardingEnabled {
-			size = o.limits.IngestionTenantShardSize(userID)
+		size := o.shardSize(userID)
+		prev, ok := o.tenants[userID]
+		known := ok && prev.shardSize == size
+		if known && !ringChanged {
+			tenants[userID] = prev // Nothing that can move a share changed.
+			continue
 		}
-		t, ok := o.tenants[userID]
-		if o.generation == nil || !ok || t.generation != generation || t.shardSize != size {
-			sub := o.subring(userID, size)
-			if sub == ring.ReadRing(o.ring) {
-				if wholeRing == nil {
-					f := subringFingerprint(sub)
-					w := o.computeShare(sub)
-					w.fingerprint = f
-					w.unsure = duplicates || subringFingerprint(sub) != f
-					wholeRing = &w
-				}
-				if o.generation == nil || !ok || t.shardSize != size || t.fingerprint != wholeRing.fingerprint || t.unsure || wholeRing.unsure {
-					t = *wholeRing
-					t.shardSize = size
-				}
-			} else {
-				fingerprint := subringFingerprint(sub)
-				if o.generation == nil || !ok || t.shardSize != size || t.fingerprint != fingerprint || duplicates || t.unsure {
-					t = o.computeShare(sub)
-					t.shardSize = size
-					t.fingerprint = fingerprint
-					t.unsure = duplicates
-				}
-			}
-			t.generation = generation
+		sub := o.subring(userID, size)
+		fingerprint := w.fingerprintOf(sub)
+		if known && prev.fingerprint == fingerprint && !prev.unsure && !duplicates {
+			tenants[userID] = prev // The tenant's subring is as before.
+			continue
 		}
+		t := w.compute(sub, fingerprint, duplicates)
+		t.shardSize = size
 		tenants[userID] = t
+	}
+	o.tenants = tenants
+	o.publish(tenants)
+}
 
+// publish stores the shares for the limiter and reports them.
+func (o *ownershipRefresher) publish(tenants map[string]tenantShare) {
+	shares := make(map[string]float64, len(tenants))
+	for userID, t := range tenants {
 		// Shares describe one copy per zone. When a zone is missing from the
 		// ring, Get puts a second copy in another zone, so leave the tenant out
 		// and let the limiter use the even split, which accounts for it.
-		if t.zones != o.ring.ReplicationFactor() {
-			continue
+		if t.zones == o.ring.ReplicationFactor() {
+			shares[userID] = t.share
 		}
-		shares[userID] = t.share
 	}
-	o.tenants = tenants
 	o.ownership.shares.Store(&shares)
 
 	o.shareGauge.Reset()
 	for userID, share := range shares {
 		o.shareGauge.WithLabelValues(userID).Set(share)
 	}
+}
+
+func (o *ownershipRefresher) shardSize(userID string) int {
+	if !o.shuffleShardingEnabled {
+		return 0
+	}
+	return o.limits.IngestionTenantShardSize(userID)
+}
+
+// wholeRingMemo computes, at most once per refresh, the fingerprint and share
+// of tenants using the whole ring. Other subrings pass straight through.
+type wholeRingMemo struct {
+	o           *ownershipRefresher
+	fingerprint *uint64
+	share       *tenantShare
+}
+
+func (w *wholeRingMemo) isWholeRing(sub ring.ReadRing) bool {
+	return sub == ring.ReadRing(w.o.ring)
+}
+
+func (w *wholeRingMemo) fingerprintOf(sub ring.ReadRing) uint64 {
+	if !w.isWholeRing(sub) {
+		return subringFingerprint(sub)
+	}
+	if w.fingerprint == nil {
+		f := subringFingerprint(sub)
+		w.fingerprint = &f
+	}
+	return *w.fingerprint
+}
+
+// compute returns the share of sub. A subring is an immutable snapshot, but
+// the whole ring is the live ring, which a heartbeat can change while it is
+// read: if its fingerprint moved, the share is marked unsure.
+func (w *wholeRingMemo) compute(sub ring.ReadRing, fingerprint uint64, duplicates bool) tenantShare {
+	if !w.isWholeRing(sub) {
+		t := w.o.computeShare(sub)
+		t.fingerprint = fingerprint
+		t.unsure = duplicates
+		return t
+	}
+	if w.share == nil {
+		t := w.o.computeShare(sub)
+		t.fingerprint = fingerprint
+		t.unsure = duplicates || subringFingerprint(sub) != fingerprint
+		w.share = &t
+	}
+	return *w.share
 }
 
 // subring returns the ring the distributor routes the tenant's writes with.

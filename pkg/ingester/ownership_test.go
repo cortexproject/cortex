@@ -455,7 +455,7 @@ func TestOwnershipRefresher_ComputesOwnershipOnlyWhenTheSubringChanges(t *testin
 		change(desc)
 		d.OnRingInstanceHeartbeat(nil, cloneOwnershipTestDesc(desc))
 		refresher.refresh([]string{tenant})
-		assert.Equal(t, freshOwnershipShares(t, desc, me, overrides, []string{tenant}), withoutGeneration(refresher.tenants))
+		assert.Equal(t, freshOwnershipShares(t, desc, me, overrides, []string{tenant}), comparableShares(refresher.tenants))
 		return testutil.ToFloat64(refresher.computations) - before
 	}
 
@@ -466,7 +466,7 @@ func TestOwnershipRefresher_ComputesOwnershipOnlyWhenTheSubringChanges(t *testin
 	limits.limits[tenant] = &validation.Limits{IngestionTenantShardSize: shardSize + 3}
 	refresher.refresh([]string{tenant})
 	assert.Equal(t, shardSize+3, refresher.tenants[tenant].shardSize)
-	assert.Equal(t, freshOwnershipShares(t, desc, me, overrides, []string{tenant}), withoutGeneration(refresher.tenants))
+	assert.Equal(t, freshOwnershipShares(t, desc, me, overrides, []string{tenant}), comparableShares(refresher.tenants))
 
 	refresher.refresh(nil)
 	assert.Empty(t, refresher.tenants, "a tenant gone from the ingester is dropped")
@@ -553,7 +553,7 @@ func TestOwnershipRefresher_RecomputesWhenATenantSwitchesToTheWholeRing(t *testi
 
 	fresh := freshOwnershipShares(t, next, me, overrides, []string{tenant})
 	require.NotEqual(t, before, fresh[tenant].share, "the layout must make the switch move the share")
-	assert.Equal(t, fresh, withoutGeneration(refresher.tenants))
+	assert.Equal(t, fresh, comparableShares(refresher.tenants))
 }
 
 // Through any sequence of ring changes, the shares a refresher reuses must
@@ -643,19 +643,18 @@ func testOwnershipRefresherCachedSharesMatchFreshComputation(t *testing.T, share
 		}
 		refresher.refresh(tenants)
 
-		require.Equal(t, freshOwnershipShares(t, desc, me, overrides, tenants), withoutGeneration(refresher.tenants), "step %d", step)
+		require.Equal(t, freshOwnershipShares(t, desc, me, overrides, tenants), comparableShares(refresher.tenants), "step %d", step)
 	}
 	// Not a correctness condition: shows the test exercises reuse.
 	t.Logf("the generation changed on %d of %d steps; ownership computed %v times", bumps, steps, testutil.ToFloat64(refresher.computations))
 	assert.Less(t, bumps, steps)
 }
 
-// withoutGeneration drops what only decides when a share is recomputed, so
+// comparableShares drops what only decides when a share is recomputed, so
 // shares can be compared with ones computed from scratch.
-func withoutGeneration(tenants map[string]tenantShare) map[string]tenantShare {
+func comparableShares(tenants map[string]tenantShare) map[string]tenantShare {
 	out := make(map[string]tenantShare, len(tenants))
 	for id, t := range tenants {
-		t.generation = 0
 		t.unsure = false
 		out[id] = t
 	}
@@ -707,7 +706,7 @@ func freshOwnershipShares(t *testing.T, desc *ring.Desc, me string, overrides *v
 	r.UpdateDesc(desc)
 	fresh := newOwnershipRefresher(r, me, true, overrides, nil, nil)
 	fresh.refresh(tenants)
-	return withoutGeneration(fresh.tenants)
+	return comparableShares(fresh.tenants)
 }
 
 // collidingOwnershipTestDesc returns a ring where an instance of zone-1 holds
@@ -794,7 +793,7 @@ func TestOwnershipRefresher_TokenSharedAcrossZones(t *testing.T) {
 
 			fresh := freshOwnershipShares(t, next, me, overrides, tenants)
 			require.NotEqual(t, before, fresh[tenant].share, "the layout must make the change move the share")
-			assert.Equal(t, fresh, withoutGeneration(refresher.tenants))
+			assert.Equal(t, fresh, comparableShares(refresher.tenants))
 		})
 	}
 }
@@ -855,7 +854,7 @@ func TestOwnershipRefresher_WholeRingFlagDescribesTheRingUsed(t *testing.T) {
 	shrunk.RemoveIngester(ownershipTestInstanceID(1, 2))
 	limits.hook = func() { d.OnRingInstanceHeartbeat(nil, cloneOwnershipTestDesc(shrunk)) }
 	refresher.refresh([]string{tenant})
-	require.Equal(t, freshOwnershipShares(t, shrunk, me, overrides, []string{tenant}), withoutGeneration(refresher.tenants), "the share comes from the ring ShuffleShard used")
+	require.Equal(t, freshOwnershipShares(t, shrunk, me, overrides, []string{tenant}), comparableShares(refresher.tenants), "the share comes from the ring ShuffleShard used")
 
 	// An instance joins zone-2: 12 instances again.
 	grown := cloneOwnershipTestDesc(shrunk)
@@ -865,7 +864,7 @@ func TestOwnershipRefresher_WholeRingFlagDescribesTheRingUsed(t *testing.T) {
 
 	fresh := freshOwnershipShares(t, grown, me, overrides, []string{tenant})
 	require.NotEqual(t, fresh[tenant].share, freshOwnershipShares(t, shrunk, me, overrides, []string{tenant})[tenant].share, "the layout must make the two rings differ")
-	assert.Equal(t, fresh, withoutGeneration(refresher.tenants))
+	assert.Equal(t, fresh, comparableShares(refresher.tenants))
 }
 
 // The ring leaves excluded zones out, so changes there bump the generation
@@ -903,7 +902,7 @@ func TestOwnershipRefresher_ExcludedZones(t *testing.T) {
 	fresh.UpdateDesc(cloneOwnershipTestDesc(desc))
 	want := newOwnershipRefresher(fresh, me, true, overrides, nil, nil)
 	want.refresh([]string{tenant})
-	assert.Equal(t, withoutGeneration(want.tenants), withoutGeneration(refresher.tenants))
+	assert.Equal(t, comparableShares(want.tenants), comparableShares(refresher.tenants))
 }
 
 // An instance outside a tenant's subring that takes a token of this ingester
@@ -938,7 +937,7 @@ func TestOwnershipRefresher_TokenSharedFromOutsideTheSubring(t *testing.T) {
 	fresh := freshOwnershipShares(t, desc, me, overrides, []string{tenant})
 	require.Equal(t, before.fingerprint, fresh[tenant].fingerprint, "the layout must keep the subring the same")
 	require.NotEqual(t, before.share, fresh[tenant].share, "the layout must move the share")
-	assert.Equal(t, fresh, withoutGeneration(refresher.tenants))
+	assert.Equal(t, fresh, comparableShares(refresher.tenants))
 }
 
 // A share computed while a token was shared across zones depends on an
@@ -985,7 +984,7 @@ func TestOwnershipRefresher_RecomputesWhenTokensStopBeingShared(t *testing.T) {
 			require.False(t, r.HasDuplicateTokens())
 			refresher.refresh(tenants)
 
-			assert.Equal(t, freshOwnershipShares(t, after, me, overrides, tenants), withoutGeneration(refresher.tenants))
+			assert.Equal(t, freshOwnershipShares(t, after, me, overrides, tenants), comparableShares(refresher.tenants))
 		})
 	}
 }
@@ -1036,7 +1035,7 @@ func TestOwnershipRefresher_WholeRingChangedDuringARefreshAndBack(t *testing.T) 
 	d.OnRingInstanceHeartbeat(nil, cloneOwnershipTestDesc(back))
 	refresher.refresh(tenants)
 
-	assert.Equal(t, freshOwnershipShares(t, back, me, overrides, tenants), withoutGeneration(refresher.tenants))
+	assert.Equal(t, freshOwnershipShares(t, back, me, overrides, tenants), comparableShares(refresher.tenants))
 }
 
 // Randomized: each step a new ring bumps the generation, so the next refresh
@@ -1101,6 +1100,6 @@ func TestOwnershipRefresher_ChangesDuringARefreshUndone(t *testing.T) {
 		heartbeat(desc)
 		refresher.refresh(tenants)
 
-		require.Equal(t, freshOwnershipShares(t, desc, me, overrides, tenants), withoutGeneration(refresher.tenants), "step %d", step)
+		require.Equal(t, freshOwnershipShares(t, desc, me, overrides, tenants), comparableShares(refresher.tenants), "step %d", step)
 	}
 }

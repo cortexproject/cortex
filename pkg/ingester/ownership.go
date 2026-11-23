@@ -134,6 +134,9 @@ type tenantShare struct {
 	fingerprint uint64
 	share       float64
 	zones       int
+	// Computed while tokens were shared across zones, or from a whole ring
+	// that changed during the computation: recompute after the next change.
+	unsure bool
 }
 
 func newOwnershipRefresher(r *ring.Ring, instanceID string, shuffleShardingEnabled bool, limits *validation.Overrides, registerer prometheus.Registerer, generation func() uint64) *ownershipRefresher {
@@ -170,7 +173,9 @@ func (o *ownershipRefresher) refresh(userIDs []string) {
 	// decide this zone's ownership, which the fingerprint does not cover.
 	duplicates := o.ring.HasDuplicateTokens()
 
-	var wholeRingFingerprint *uint64
+	// The whole ring is read live, so its fingerprint and share are taken
+	// once per refresh and kept only if the ring did not change in between.
+	var wholeRing *tenantShare
 	tenants := make(map[string]tenantShare, len(userIDs))
 	shares := make(map[string]float64, len(userIDs))
 	for _, userID := range userIDs {
@@ -181,21 +186,26 @@ func (o *ownershipRefresher) refresh(userIDs []string) {
 		t, ok := o.tenants[userID]
 		if o.generation == nil || !ok || t.generation != generation || t.shardSize != size {
 			sub := o.subring(userID, size)
-			var fingerprint uint64
 			if sub == ring.ReadRing(o.ring) {
-				// Every whole-ring tenant has the same one.
-				if wholeRingFingerprint == nil {
+				if wholeRing == nil {
 					f := subringFingerprint(sub)
-					wholeRingFingerprint = &f
+					w := o.computeShare(sub)
+					w.fingerprint = f
+					w.unsure = duplicates || subringFingerprint(sub) != f
+					wholeRing = &w
 				}
-				fingerprint = *wholeRingFingerprint
+				if o.generation == nil || !ok || t.shardSize != size || t.fingerprint != wholeRing.fingerprint || t.unsure || wholeRing.unsure {
+					t = *wholeRing
+					t.shardSize = size
+				}
 			} else {
-				fingerprint = subringFingerprint(sub)
-			}
-			if o.generation == nil || !ok || t.shardSize != size || t.fingerprint != fingerprint || duplicates {
-				t = o.computeShare(sub)
-				t.shardSize = size
-				t.fingerprint = fingerprint
+				fingerprint := subringFingerprint(sub)
+				if o.generation == nil || !ok || t.shardSize != size || t.fingerprint != fingerprint || duplicates || t.unsure {
+					t = o.computeShare(sub)
+					t.shardSize = size
+					t.fingerprint = fingerprint
+					t.unsure = duplicates
+				}
 			}
 			t.generation = generation
 		}

@@ -1437,3 +1437,51 @@ func waitRingInstance(t *testing.T, timeout time.Duration, l *Lifecycler, check 
 		return check(instance)
 	})
 }
+
+// TestLifecycler_RingDesc checks that the lifecycler keeps a copy of the ring only
+// when asked to, and replaces it only when something ownership depends on changed.
+func TestLifecycler_RingDesc(t *testing.T) {
+	l := &Lifecycler{KVStore: &MockClient{}}
+	desc := &Desc{Ingesters: generateRingInstances(3, 1, 4)}
+
+	l.updateCounters(desc, 1)
+	assert.Nil(t, first(l.RingDesc()), "no copy is kept unless asked for")
+
+	l.KeepRingDesc()
+	l.updateCounters(desc, 2)
+	kept, read := l.RingDesc()
+	assert.Equal(t, uint32(2), read)
+	require.NotNil(t, kept)
+	assert.NotSame(t, desc, kept, "the lifecycler must keep its own copy")
+	assert.Equal(t, desc.Ingesters, kept.Ingesters)
+
+	heartbeat := cloneDesc(desc)
+	for id, instance := range heartbeat.Ingesters {
+		instance.Timestamp++
+		heartbeat.Ingesters[id] = instance
+	}
+	l.updateCounters(heartbeat, 3)
+	unchanged, read := l.RingDesc()
+	assert.Same(t, kept, unchanged, "a heartbeat must not replace the copy")
+	assert.Equal(t, uint32(3), read, "but the copy is now up to date as of that read")
+
+	changed := cloneDesc(desc)
+	for id, instance := range changed.Ingesters {
+		instance.State = LEAVING
+		changed.Ingesters[id] = instance
+		break
+	}
+	l.updateCounters(changed, 4)
+	latest, read := l.RingDesc()
+	assert.NotSame(t, kept, latest, "a state change must replace the copy")
+	assert.Equal(t, uint32(4), read)
+
+	// Reads can overlap. One that finishes after a newer one must not replace the
+	// copy, or an older ring would be labelled as the newer read.
+	l.updateCounters(desc, 3)
+	stillLatest, read := l.RingDesc()
+	assert.Same(t, latest, stillLatest)
+	assert.Equal(t, uint32(4), read)
+}
+
+func first[A, B any](a A, _ B) A { return a }

@@ -178,3 +178,12 @@ Currently experimental features are:
   - `-querier.optimizers` / `-ruler.optimizers` (string) CLI flags
   - `-querier.decoding-concurrency` / `-ruler.decoding-concurrency` (int) CLI flags
   - `-querier.selector-batch-size` / `-ruler.selector-batch-size` (int) CLI flags
+- Ingester: Owned Series Tracking
+  - Enable on Ingester via `-ingester.owned-series-metrics-enabled=true`
+  - Counts only the series the distributors route to this ingester and exposes the `cortex_ingester_owned_series` metric
+  - Active series entries are then retained until head compaction instead of being released after `-ingester.active-series-metrics-idle-timeout`, so that the owned count reflects what is held in memory. This increases ingester memory roughly in proportion to the ratio between series in the TSDB head and recently active series
+  - The value of `cortex_ingester_active_series` is unchanged, but `cortex_ingester_owned_series` may exceed it for a tenant with high churn, since it counts idle series which are still held
+  - `-ingester.owned-series-limit-enforcement-enabled` additionally uses that count for per-tenant and instance series limits, instead of the total number of series in the TSDB head. Note the instance-wide `max_series` limit then stops counting series which have been reassigned to another ingester but are still resident until the next head compaction
+  - Ownership follows the ring the distributors route each tenant within, including a shuffle-sharded tenant's subring. Ingesters must therefore run with the same `-distributor.sharding-strategy`, `-distributor.shard-by-all-labels` and `-distributor.extend-writes` as the distributors
+  - A new series counts as owned as soon as it arrives. Existing series are re-evaluated, within about a second, when the ingester's lifecycler reads a changed ring on its heartbeat, which is also when its local limits change, or when a tenant's shard size changes. A series is only re-evaluated against a view of the ring read after it arrived. After a restart, the series restored from the WAL are re-evaluated once the ingester has joined the ring
+  - The ingester keeps its own copy of the ring for this, built from the ring its lifecycler already reads rather than by watching the KV store again. Its size grows with the size of the ring, plus a cached subring for each shuffle-sharded tenant the ingester holds series for

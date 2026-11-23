@@ -1040,6 +1040,15 @@ func (i *Ingester) starting(ctx context.Context) error {
 	compactionService := services.NewBasicService(nil, i.compactionLoop, nil)
 	servs = append(servs, compactionService)
 
+	if i.ownershipRefresher != nil {
+		// Its own service: after a ring change a refresh can take seconds, which
+		// must not delay updateLoop and the ingestion rate it ticks.
+		servs = append(servs, services.NewTimerService(ownershipRefreshPeriod, nil, func(ctx context.Context) error {
+			i.ownershipRefresher.refreshContext(ctx, i.getTSDBUsers())
+			return nil
+		}, nil))
+	}
+
 	if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {
 		shippingService := services.NewBasicService(nil, i.shipBlocksLoop, nil)
 		servs = append(servs, shippingService)
@@ -1142,13 +1151,6 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	labelSetMetricsTicker := time.NewTicker(labelSetMetricsTickInterval)
 	defer labelSetMetricsTicker.Stop()
 
-	var ownershipTickerChan <-chan time.Time
-	if i.ownershipRefresher != nil {
-		t := time.NewTicker(ownershipRefreshPeriod)
-		ownershipTickerChan = t.C
-		defer t.Stop()
-	}
-
 	for {
 		select {
 		case <-metadataPurgeTicker.C:
@@ -1176,8 +1178,6 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 			i.updateUserTSDBConfigs()
 		case <-labelSetMetricsTicker.C:
 			i.updateLabelSetMetrics()
-		case <-ownershipTickerChan:
-			i.ownershipRefresher.refresh(i.getTSDBUsers())
 		case <-ctx.Done():
 			return nil
 		case err := <-i.subservicesWatcher.Chan():

@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"encoding/binary"
 	"maps"
 	"sync"
@@ -20,7 +21,7 @@ import (
 
 var errRingOwnershipRequiresZoneAwareness = errors.New("-ingester.use-ring-ownership-for-limits requires zone-aware replication to be enabled")
 
-// ownershipRefreshPeriod is how often tenant shares are recomputed. The
+// ownershipRefreshPeriod is how often tenant shares are refreshed. The
 // desc-fed ring itself only changes on this ingester's heartbeats.
 const ownershipRefreshPeriod = 10 * time.Second
 
@@ -169,6 +170,12 @@ func newOwnershipRefresher(r *ring.Ring, instanceID string, shuffleShardingEnabl
 }
 
 func (o *ownershipRefresher) refresh(userIDs []string) {
+	o.refreshContext(context.Background(), userIDs)
+}
+
+// refreshContext refreshes the shares of userIDs. If ctx is done before every
+// tenant is refreshed, it returns without changing anything.
+func (o *ownershipRefresher) refreshContext(ctx context.Context, userIDs []string) {
 	if o.ring.InstancesCount() == 0 {
 		return // No heartbeat has fed the ring yet.
 	}
@@ -183,6 +190,10 @@ func (o *ownershipRefresher) refresh(userIDs []string) {
 	w := wholeRingMemo{o: o}
 	tenants := make(map[string]tenantShare, len(userIDs))
 	for _, userID := range userIDs {
+		if ctx.Err() != nil {
+			o.lastGeneration = 0 // Check every tenant next time.
+			return
+		}
 		size := o.shardSize(userID)
 		prev, ok := o.tenants[userID]
 		known := ok && prev.shardSize == size

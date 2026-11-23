@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"math"
@@ -1151,4 +1152,43 @@ func TestOwnershipRefresher_IdenticalMembersDoNotCancel(t *testing.T) {
 
 	_, ok = refresher.ownership.share(tenant)
 	assert.False(t, ok, "four zones: the share must not be used")
+}
+
+// A refresh stopped part-way, as on shutdown, leaves the shares as they were,
+// and the next refresh checks every tenant.
+func TestOwnershipRefresher_StoppedRefreshChangesNothing(t *testing.T) {
+	const tenant = "whole"
+	me := ownershipTestInstanceID(0, 0)
+	layout := ownershipTestRingLayout{zones: 3, perZone: 4, tokensPerInstance: 16}
+	desc := newOwnershipTestDesc(rand.New(rand.NewSource(ownershipTestSeed)), layout)
+	tenants := []string{tenant}
+	overrides := validation.NewOverrides(validation.Limits{}, nil)
+
+	// A neighbour whose READONLY flip moves the whole-ring share.
+	baseline := freshOwnershipShares(t, desc, me, overrides, tenants)[tenant].share
+	changed := cloneOwnershipTestDesc(desc)
+	for i := 1; i < layout.perZone; i++ {
+		candidate := cloneOwnershipTestDesc(desc)
+		setOwnershipTestState(ownershipTestInstanceID(0, i), ring.READONLY)(candidate)
+		if freshOwnershipShares(t, candidate, me, overrides, tenants)[tenant].share != baseline {
+			changed = candidate
+			break
+		}
+	}
+	require.NotEqual(t, baseline, freshOwnershipShares(t, changed, me, overrides, tenants)[tenant].share)
+
+	d, r := newOwnershipTestDelegate(t, me, layout.zones)
+	d.OnRingInstanceHeartbeat(nil, cloneOwnershipTestDesc(desc))
+	refresher := newOwnershipRefresher(r, me, true, overrides, nil, d.generation.Load)
+	refresher.refresh(tenants)
+	before := maps.Clone(refresher.tenants)
+
+	d.OnRingInstanceHeartbeat(nil, cloneOwnershipTestDesc(changed))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	refresher.refreshContext(ctx, tenants)
+	assert.Equal(t, before, refresher.tenants)
+
+	refresher.refresh(tenants)
+	assert.Equal(t, freshOwnershipShares(t, changed, me, overrides, tenants), comparableShares(refresher.tenants))
 }

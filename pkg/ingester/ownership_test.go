@@ -91,7 +91,7 @@ func TestRingOwnershipDelegate_FeedsACopyOfTheDesc(t *testing.T) {
 	assert.Contains(t, desc.Ingesters, "b-1")
 	assert.Equal(t, []uint32{300, 100}, desc.Ingesters["a-1"].Tokens)
 
-	ownership := r.ZonalOwnership(ring.Write)
+	ownership := r.ZonalOwnership()
 	assert.NotContains(t, ownership, "b-1")
 	assert.Positive(t, ownership["a-1"])
 	assert.Positive(t, ownership["a-2"])
@@ -131,9 +131,9 @@ func TestOwnershipRefresher(t *testing.T) {
 
 	share, ok := refresher.ownership.share(unshuffledTenant)
 	require.True(t, ok)
-	assert.InDelta(t, r.ZonalOwnership(ring.Write)[ingesterID], share, ownershipTestTolerance)
+	assert.InDelta(t, r.ZonalOwnership()[ingesterID], share, ownershipTestTolerance)
 
-	subOwnership := r.ShuffleShard(shuffledTenant, shardSize).(ring.ZonalOwnershipRing).ZonalOwnership(ring.Write)
+	subOwnership := r.ShuffleShard(shuffledTenant, shardSize).(ring.ZonalOwnershipRing).ZonalOwnership()
 	share, ok = refresher.ownership.share(shuffledTenant)
 	if want, inShard := subOwnership[ingesterID]; inShard {
 		require.True(t, ok)

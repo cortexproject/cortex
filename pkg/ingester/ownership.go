@@ -101,7 +101,7 @@ func (o *ownershipRefresher) refresh(userIDs []string) {
 		if !ok || zonal.ZonesCount() != o.ring.ReplicationFactor() {
 			continue
 		}
-		shares[userID] = zonal.ZonalOwnership(o.writeOp)[o.instanceID]
+		shares[userID] = zonal.ZonalOwnership()[o.instanceID]
 	}
 	o.ownership.shares.Store(&shares)
 

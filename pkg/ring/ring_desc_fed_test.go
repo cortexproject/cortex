@@ -18,8 +18,7 @@ func TestDescFedRing_ZonalOwnershipMatchesWatchedRing(t *testing.T) {
 	require.NoError(t, err)
 	fed.UpdateDesc(newOwnershipTestDesc(instances))
 
-	assert.Equal(t, watched.ZonalOwnership(Write), fed.ZonalOwnership(Write))
-	assert.Equal(t, watched.ZonalOwnership(WriteNoExtend), fed.ZonalOwnership(WriteNoExtend))
+	assert.Equal(t, watched.ZonalOwnership(), fed.ZonalOwnership())
 }
 
 func TestDescFedRing_UpdateDescReplacesState(t *testing.T) {
@@ -28,10 +27,10 @@ func TestDescFedRing_UpdateDescReplacesState(t *testing.T) {
 	require.NoError(t, err)
 
 	fed.UpdateDesc(newOwnershipTestDesc(handPickedInstances(nil)))
-	require.InDelta(t, 0.25, fed.ZonalOwnership(Write)["a2"], ownershipTolerance)
+	require.InDelta(t, 0.25, fed.ZonalOwnership()["a2"], ownershipTolerance)
 
-	fed.UpdateDesc(newOwnershipTestDesc(handPickedInstances(map[string]func(*ownershipTestInstance){"a2": withState(LEAVING)})))
-	assert.Zero(t, fed.ZonalOwnership(Write)["a2"])
+	fed.UpdateDesc(newOwnershipTestDesc(handPickedInstances(map[string]func(*ownershipTestInstance){"a2": withState(READONLY)})))
+	assert.Zero(t, fed.ZonalOwnership()["a2"])
 }
 
 func TestDescFedRing_UpdateDescLeavesDescUnchanged(t *testing.T) {
@@ -48,7 +47,7 @@ func TestDescFedRing_UpdateDescLeavesDescUnchanged(t *testing.T) {
 	// updateRingState deletes excluded zones and sorts tokens in place.
 	assert.Contains(t, desc.Ingesters, "b-1")
 	assert.Equal(t, []uint32{300, 100}, desc.Ingesters["a-1"].Tokens)
-	assert.NotContains(t, fed.ZonalOwnership(Write), "b-1")
+	assert.NotContains(t, fed.ZonalOwnership(), "b-1")
 }
 
 func TestDescFedRing_DoesNotRegisterMetrics(t *testing.T) {

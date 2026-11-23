@@ -1,8 +1,10 @@
 package cortex
 
 import (
+	"bytes"
 	"context"
 	"maps"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"reflect"
@@ -10,16 +12,22 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/promql/parser"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/uber/jaeger-client-go"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
+	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func changeTargetConfig(c *Config) {
@@ -437,4 +445,67 @@ func setAllSecrets(v reflect.Value, sentinel string) {
 			}
 		}
 	}
+}
+
+func TestWrapInternalQuerierRouter_LogsRequests(t *testing.T) {
+	buf := &bytes.Buffer{}
+	origLogger := util_log.Logger
+	util_log.Logger = log.NewLogfmtLogger(log.NewSyncWriter(buf))
+	t.Cleanup(func() { util_log.Logger = origLogger })
+
+	cfg := newDefaultConfig()
+	cfg.Server.LogRequestAtInfoLevel = true
+	c := &Cortex{
+		Cfg: *cfg,
+		API: &api.API{
+			AuthMiddleware:       middleware.AuthenticateUser,
+			HTTPHeaderMiddleware: &api.HTTPHeaderMiddleware{},
+		},
+	}
+
+	handler := c.wrapInternalQuerierRouter(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/query?query=up", nil)
+	req.Header.Set("X-Scope-OrgID", "tenant-1")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	assert.Contains(t, buf.String(), "GET /api/v1/query?query=up")
+	assert.Contains(t, buf.String(), "tenant-1")
+}
+
+func TestWrapInternalQuerierRouter_LogCarriesTraceID(t *testing.T) {
+	buf := &bytes.Buffer{}
+	origLogger := util_log.Logger
+	util_log.Logger = log.NewLogfmtLogger(log.NewSyncWriter(buf))
+	t.Cleanup(func() { util_log.Logger = origLogger })
+
+	tracer, closer := jaeger.NewTracer("test", jaeger.NewConstSampler(true), jaeger.NewNullReporter())
+	t.Cleanup(func() { _ = closer.Close() })
+	origTracer := opentracing.GlobalTracer()
+	opentracing.SetGlobalTracer(tracer)
+	t.Cleanup(func() { opentracing.SetGlobalTracer(origTracer) })
+
+	cfg := newDefaultConfig()
+	cfg.Server.LogRequestAtInfoLevel = true
+	c := &Cortex{
+		Cfg: *cfg,
+		API: &api.API{
+			AuthMiddleware:       middleware.AuthenticateUser,
+			HTTPHeaderMiddleware: &api.HTTPHeaderMiddleware{},
+		},
+	}
+
+	// The request has no incoming span, so a trace ID in the log line proves that
+	// the tracing middleware runs before the log middleware.
+	handler := c.wrapInternalQuerierRouter(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/query?query=up", nil)
+	req.Header.Set("X-Scope-OrgID", "tenant-1")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	assert.Contains(t, buf.String(), "traceID=")
 }

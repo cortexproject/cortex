@@ -695,7 +695,8 @@ func TestRingOwnershipDelegate_UpdatesTheRingUnderTheLock(t *testing.T) {
 
 	<-done
 	assert.True(t, neighbourIsReadOnly())
-	assert.True(t, d.instances[neighbour].readOnly)
+	var h instanceHasher
+	assert.Equal(t, h.hash(readOnly.Ingesters[neighbour]), d.instances[neighbour])
 }
 
 // freshOwnershipShares computes the shares from scratch on a new ring, so a bug
@@ -1102,4 +1103,52 @@ func TestOwnershipRefresher_ChangesDuringARefreshUndone(t *testing.T) {
 
 		require.Equal(t, freshOwnershipShares(t, desc, me, overrides, tenants), comparableShares(refresher.tenants), "step %d", step)
 	}
+}
+
+func TestInstanceHasher(t *testing.T) {
+	instance := func(zone string, state ring.InstanceState, tokens ...uint32) ring.InstanceDesc {
+		return ring.InstanceDesc{Zone: zone, State: state, Tokens: tokens}
+	}
+	var h instanceHasher
+	base := h.hash(instance("zone-a", ring.ACTIVE, 1, 2, 3))
+
+	assert.Equal(t, base, h.hash(instance("zone-a", ring.ACTIVE, 1, 2, 3)), "the buffer is reused between calls")
+	for name, other := range map[string]ring.InstanceDesc{
+		"zone":     instance("zone-b", ring.ACTIVE, 1, 2, 3),
+		"READONLY": instance("zone-a", ring.READONLY, 1, 2, 3),
+		"tokens":   instance("zone-a", ring.ACTIVE, 1, 2, 4),
+		"no token": instance("zone-a", ring.ACTIVE, 1, 2),
+	} {
+		assert.NotEqual(t, base, h.hash(other), name)
+	}
+	assert.Equal(t, base, h.hash(instance("zone-a", ring.LEAVING, 1, 2, 3)), "states other than READONLY do not count")
+	// The zone's length is hashed, so a zone cannot run into the tokens: without
+	// it, both of these would hash "a", then five zero bytes.
+	assert.NotEqual(t, h.hash(instance("a", ring.ACTIVE, 0)), h.hash(instance("a\x00\x00\x00\x00", ring.ACTIVE)))
+}
+
+// Two identical tokenless instances join a fourth zone, so the whole ring has
+// four zones and the share must be left out. A fingerprint that lets identical
+// members cancel, as XOR would, misses it.
+func TestOwnershipRefresher_IdenticalMembersDoNotCancel(t *testing.T) {
+	const tenant = "whole"
+	me := ownershipTestInstanceID(0, 0)
+	desc := newOwnershipTestDesc(rand.New(rand.NewSource(ownershipTestSeed)), ownershipTestRingLayout{zones: 3, perZone: 4, tokensPerInstance: 16})
+	overrides := validation.NewOverrides(validation.Limits{}, nil)
+	d, r := newOwnershipTestDelegate(t, me, 3)
+	d.OnRingInstanceHeartbeat(nil, cloneOwnershipTestDesc(desc))
+	refresher := newOwnershipRefresher(r, me, true, overrides, nil, d.generation.Load)
+	refresher.refresh([]string{tenant})
+	_, ok := refresher.ownership.share(tenant)
+	require.True(t, ok)
+
+	next := cloneOwnershipTestDesc(desc)
+	for _, id := range []string{"zone-3-a", "zone-3-b"} {
+		next.AddIngester(id, id+"-addr", "zone-3", nil, ring.PENDING, time.Time{})
+	}
+	d.OnRingInstanceHeartbeat(nil, cloneOwnershipTestDesc(next))
+	refresher.refresh([]string{tenant})
+
+	_, ok = refresher.ownership.share(tenant)
+	assert.False(t, ok, "four zones: the share must not be used")
 }

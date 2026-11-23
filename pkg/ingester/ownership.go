@@ -1,10 +1,12 @@
 package ingester
 
 import (
+	"encoding/binary"
 	"maps"
 	"sync"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,16 +33,9 @@ type ringOwnershipDelegate struct {
 	// zonal ownership anywhere in the ring.
 	generation atomic.Uint64
 
-	mtx       sync.Mutex
-	instances map[string]instanceRecord
-}
-
-// instanceRecord is what shuffle-shard picks and zonal ownership read of an
-// instance.
-type instanceRecord struct {
-	zone     string
-	readOnly bool
-	tokens   uint64
+	mtx sync.Mutex
+	// instanceHash of every instance, as of the last bump.
+	instances map[string]uint64
 }
 
 // OnRingInstanceHeartbeat runs inside the Lifecycler's CAS callback, with the
@@ -57,16 +52,11 @@ func (d *ringOwnershipDelegate) OnRingInstanceHeartbeat(_ *ring.Lifecycler, ring
 	// the new generation computes from the new ring.
 	r.UpdateDesc(ringDesc)
 
-	// Shuffle-shard picks skip READONLY instances and zonal ownership leaves
-	// them out, so only instances, zones, tokens and READONLY matter.
-	// Heartbeats and other state changes do not.
-	instances := make(map[string]instanceRecord, len(ringDesc.Ingesters))
+	// Heartbeats and state changes other than READONLY change no hash.
+	var h instanceHasher
+	instances := make(map[string]uint64, len(ringDesc.Ingesters))
 	for id, instance := range ringDesc.Ingesters {
-		instances[id] = instanceRecord{
-			zone:     instance.Zone,
-			readOnly: instance.State == ring.READONLY,
-			tokens:   hashTokens(instance.Tokens),
-		}
+		instances[id] = h.hash(instance)
 	}
 	if d.instances == nil || !maps.Equal(d.instances, instances) {
 		d.instances = instances
@@ -74,14 +64,28 @@ func (d *ringOwnershipDelegate) OnRingInstanceHeartbeat(_ *ring.Lifecycler, ring
 	}
 }
 
-// hashTokens returns a 64-bit FNV-1a hash of tokens.
-func hashTokens(tokens []uint32) uint64 {
-	h := uint64(14695981039346656037)
-	for _, token := range tokens {
-		h ^= uint64(token)
-		h *= 1099511628211
+// instanceHasher hashes what shuffle-shard picks and zonal ownership read of
+// an instance: its zone, whether it is READONLY, and its tokens. Picks skip
+// READONLY instances and zonal ownership leaves them out, so no other state
+// matters. It reuses one buffer across calls.
+type instanceHasher struct {
+	buf []byte
+}
+
+func (h *instanceHasher) hash(instance ring.InstanceDesc) uint64 {
+	b := h.buf[:0]
+	b = binary.LittleEndian.AppendUint32(b, uint32(len(instance.Zone)))
+	b = append(b, instance.Zone...)
+	if instance.State == ring.READONLY {
+		b = append(b, 1)
+	} else {
+		b = append(b, 0)
 	}
-	return h
+	for _, token := range instance.Tokens {
+		b = binary.LittleEndian.AppendUint32(b, token)
+	}
+	h.buf = b
+	return xxhash.Sum64(b)
 }
 
 // newOwnershipRing returns the ring the ownership shares are computed from. It
@@ -294,35 +298,15 @@ func (o *ownershipRefresher) computeShare(sub ring.ReadRing) tenantShare {
 // instance outside the subring changes.
 func subringFingerprint(sub ring.ReadRing) uint64 {
 	healthy, unhealthy, _ := sub.GetAllInstanceDescs(ring.Reporting)
-	var h uint64
+	var (
+		hasher instanceHasher
+		sum    uint64
+	)
 	for _, members := range [][]ring.InstanceDesc{healthy, unhealthy} {
 		for _, member := range members {
-			m := hashTokens(member.Tokens) ^ hashString(member.Zone)
-			if member.State == ring.READONLY {
-				m = ^m
-			}
-			h += mix64(m)
+			// Summed rather than XORed, so identical members do not cancel.
+			sum += hasher.hash(member)
 		}
 	}
-	return h
-}
-
-func hashString(s string) uint64 {
-	h := uint64(14695981039346656037)
-	for i := 0; i < len(s); i++ {
-		h ^= uint64(s[i])
-		h *= 1099511628211
-	}
-	return h
-}
-
-// mix64 is the splitmix64 finalizer, so that summing member hashes does not
-// let similar members cancel out.
-func mix64(x uint64) uint64 {
-	x ^= x >> 30
-	x *= 0xbf58476d1ce4e5b9
-	x ^= x >> 27
-	x *= 0x94d049bb133111eb
-	x ^= x >> 31
-	return x
+	return sum
 }

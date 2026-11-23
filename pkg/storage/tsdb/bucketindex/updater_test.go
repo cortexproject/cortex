@@ -247,7 +247,7 @@ func TestUpdater_UpdateIndex_ShouldSkipBlocksWithCorruptedMeta(t *testing.T) {
 
 	assert.Len(t, partials, 1)
 	assert.True(t, errors.Is(partials[block3.ULID], ErrBlockMetaCorrupted))
-	assert.Equal(t, nonCompactBlocks, int64(1))
+	assert.Equal(t, map[ulid.ULID]struct{}{block4.ULID: {}}, nonCompactBlocks)
 }
 
 func TestUpdater_UpdateIndex_ShouldSkipCorruptedDeletionMarks(t *testing.T) {
@@ -278,7 +278,7 @@ func TestUpdater_UpdateIndex_ShouldSkipCorruptedDeletionMarks(t *testing.T) {
 		[]tsdb.BlockMeta{block1, block2, block3, block4},
 		[]*metadata.DeletionMark{})
 	assert.Empty(t, partials)
-	assert.Equal(t, nonCompactBlocks, int64(1))
+	assert.Equal(t, map[ulid.ULID]struct{}{block4.ULID: {}}, nonCompactBlocks)
 }
 
 func TestUpdater_UpdateIndex_ShouldSkipBlockMarkedForDeletionWithMissingGlobalMarker(t *testing.T) {
@@ -633,10 +633,11 @@ func assertBucketIndexEqual(t testing.TB, idx *Index, bkt objstore.Bucket, userI
 	var expectedBlockEntries []*Block
 	for _, b := range expectedBlocks {
 		expectedBlockEntries = append(expectedBlockEntries, &Block{
-			ID:         b.ULID,
-			MinTime:    b.MinTime,
-			MaxTime:    b.MaxTime,
-			UploadedAt: getBlockUploadedAt(t, bkt, userID, b.ULID),
+			ID:              b.ULID,
+			MinTime:         b.MinTime,
+			MaxTime:         b.MaxTime,
+			CompactionLevel: b.Compaction.Level,
+			UploadedAt:      getBlockUploadedAt(t, bkt, userID, b.ULID),
 		})
 	}
 
@@ -662,10 +663,11 @@ func assertBucketIndexEqualWithParquet(t testing.TB, idx *Index, bkt objstore.Bu
 	var expectedBlockEntries []*Block
 	for _, b := range expectedBlocks {
 		block := &Block{
-			ID:         b.ULID,
-			MinTime:    b.MinTime,
-			MaxTime:    b.MaxTime,
-			UploadedAt: getBlockUploadedAt(t, bkt, userID, b.ULID),
+			ID:              b.ULID,
+			MinTime:         b.MinTime,
+			MaxTime:         b.MaxTime,
+			CompactionLevel: b.Compaction.Level,
+			UploadedAt:      getBlockUploadedAt(t, bkt, userID, b.ULID),
 		}
 		if meta, ok := parquetBlocks[b.ULID.String()]; ok {
 			block.Parquet = meta

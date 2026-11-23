@@ -35,7 +35,10 @@ func (n noOpExecutor) Submit(f func()) {
 
 type workerPoolExecutor struct {
 	serverWorkerChannel chan func()
-	closeOnce           sync.Once
+	// stopCh signals workers to exit. serverWorkerChannel is never closed so
+	// that Submit stays safe to call after Stop.
+	stopCh    chan struct{}
+	closeOnce sync.Once
 
 	fallbackTotal prometheus.Counter
 }
@@ -43,6 +46,7 @@ type workerPoolExecutor struct {
 func NewWorkerPool(name string, numWorkers int, reg prometheus.Registerer) AsyncExecutor {
 	wp := &workerPoolExecutor{
 		serverWorkerChannel: make(chan func()),
+		stopCh:              make(chan struct{}),
 		fallbackTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace:   "cortex",
 			Name:        "worker_pool_fallback_total",
@@ -60,7 +64,7 @@ func NewWorkerPool(name string, numWorkers int, reg prometheus.Registerer) Async
 
 func (s *workerPoolExecutor) Stop() {
 	s.closeOnce.Do(func() {
-		close(s.serverWorkerChannel)
+		close(s.stopCh)
 	})
 }
 
@@ -75,11 +79,12 @@ func (s *workerPoolExecutor) Submit(f func()) {
 
 func (s *workerPoolExecutor) run() {
 	for range serverWorkerResetThreshold {
-		f, ok := <-s.serverWorkerChannel
-		if !ok {
+		select {
+		case f := <-s.serverWorkerChannel:
+			f()
+		case <-s.stopCh:
 			return
 		}
-		f()
 	}
 	go s.run()
 }

@@ -35,6 +35,7 @@
 * [BUGFIX] Ingester: Stop `QueryStream` from reading the TSDB index after the request is canceled or times out. The series loop noticed cancellation only when it sent a batch, so a query shard whose series all failed the shard matcher, or the lazy matchers of `-ingester.enable-matcher-optimization`, kept decoding every series in its postings after the querier had given up. The loop now checks the request context every 128 series and returns the context error. #7931
 * [BUGFIX] Ingester: Fix the expanded postings cache byte accounting drifting under concurrent expiry and eviction, which made the cache count bytes for entries it no longer held. Failed fetches are no longer cached until the TTL expires. #7944
 * [BUGFIX] Querier: Increment `cortex_query_evictions_total` and deregister the victim before cancelling it in the query evictor, fixing double-counted evictions of still-unwinding queries. #7616
+* [BUGFIX] Query Frontend: Apply the tenant's `default_priority` to metadata queries. `/api/v1/labels`, `/api/v1/series` and `/api/v1/label/<name>/values` were left with no priority assigned when none of the configured query attributes matched, so the frontend's own queue ordered them at a hardcoded 0 instead of the configured default, the `priority` label of `cortex_query_frontend_queue_length` reported 0 for them, and the query stats log omitted the field. A metadata query that does match an attribute now takes the first matching priority rather than the last. #7942
 
 ## 1.22.0 2026-11-19
 

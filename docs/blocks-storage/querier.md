@@ -2290,7 +2290,7 @@ blocks_storage:
     # compacted blocks.
     expanded_postings_cache:
       # If enabled, ingesters will cache expanded postings for the head block.
-      # Only queries with with an equal matcher for metric __name__ are cached.
+      # Only queries with an equal matcher for metric __name__ are cached.
       head:
         # Whether the postings cache is enabled or not
         # CLI flag: -blocks-storage.expanded_postings_cache.head.enabled

@@ -338,7 +338,7 @@ func ownershipLimitsShares(t *testing.T, instances []struct {
 	}
 
 	shares := map[string]float64{}
-	for id, share := range scoped.(ring.ZonalOwnershipRing).ZonalOwnership(ring.Write) {
+	for id, share := range scoped.(ring.ZonalOwnershipRing).ZonalOwnership() {
 		if share > 0 {
 			shares[id] = share
 		}

@@ -154,7 +154,6 @@ type Config struct {
 	// to accurately apply global limits.
 	DistributorShardingStrategy string `yaml:"-"`
 	DistributorShardByAllLabels bool   `yaml:"-"`
-	DistributorExtendWrites     bool   `yaml:"-"`
 
 	UseRingOwnershipForLimits bool `yaml:"use_ring_ownership_for_limits"`
 
@@ -898,7 +897,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		}, i.getOldestUnshippedBlockMetric)
 	}
 
-	ownershipDelegate := &ringOwnershipDelegate{}
+	ownershipDelegate := &ringOwnershipDelegate{enabled: cfg.UseRingOwnershipForLimits}
 	i.lifecycler, err = ring.NewLifecyclerWithDelegate(cfg.LifecyclerConfig, i, "ingester", RingKey, false, cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown, logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer), ownershipDelegate)
 	if err != nil {
 		return nil, err
@@ -918,12 +917,13 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 	)
 
 	if cfg.UseRingOwnershipForLimits {
-		ownershipRing, err := ring.NewDescFedRing(cfg.LifecyclerConfig.RingConfig, "ingester-ownership", RingKey, i.lifecycler.KVStore, logger)
-		if err != nil {
+		newRing := func() (*ring.Ring, error) {
+			return newOwnershipRing(cfg.LifecyclerConfig.RingConfig, i.lifecycler.KVStore, logger)
+		}
+		if _, err := newRing(); err != nil {
 			return nil, errors.Wrap(err, "failed to create the ring for ownership-based limits")
 		}
-		ownershipDelegate.ring.Store(ownershipRing)
-		i.ownershipRefresher = newOwnershipRefresher(ownershipRing, i.lifecycler.ID, cfg.DistributorExtendWrites, i.limiter.shuffleShardingEnabled, limits, registerer)
+		i.ownershipRefresher = newOwnershipRefresher(ownershipDelegate.latest, newRing, i.lifecycler.ID, i.limiter.shuffleShardingEnabled, limits, registerer)
 		i.limiter.ownership = i.ownershipRefresher.ownership
 	}
 
@@ -1041,6 +1041,12 @@ func (i *Ingester) starting(ctx context.Context) error {
 	compactionService := services.NewBasicService(nil, i.compactionLoop, nil)
 	servs = append(servs, compactionService)
 
+	if i.ownershipRefresher != nil {
+		// Its own service: after a ring change a refresh can take seconds, which
+		// must not delay updateLoop and the ingestion rate it ticks.
+		servs = append(servs, services.NewTimerService(ownershipRefreshPeriod, nil, i.refreshOwnership, nil))
+	}
+
 	if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {
 		shippingService := services.NewBasicService(nil, i.shipBlocksLoop, nil)
 		servs = append(servs, shippingService)
@@ -1143,13 +1149,6 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	labelSetMetricsTicker := time.NewTicker(labelSetMetricsTickInterval)
 	defer labelSetMetricsTicker.Stop()
 
-	var ownershipTickerChan <-chan time.Time
-	if i.ownershipRefresher != nil {
-		t := time.NewTicker(ownershipRefreshPeriod)
-		ownershipTickerChan = t.C
-		defer t.Stop()
-	}
-
 	for {
 		select {
 		case <-metadataPurgeTicker.C:
@@ -1177,8 +1176,6 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 			i.updateUserTSDBConfigs()
 		case <-labelSetMetricsTicker.C:
 			i.updateLabelSetMetrics()
-		case <-ownershipTickerChan:
-			i.ownershipRefresher.refresh(i.getTSDBUsers())
 		case <-ctx.Done():
 			return nil
 		case err := <-i.subservicesWatcher.Chan():

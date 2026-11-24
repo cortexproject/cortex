@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -21,48 +22,63 @@ import (
 
 var errRingOwnershipRequiresZoneAwareness = errors.New("-ingester.use-ring-ownership-for-limits requires zone-aware replication to be enabled")
 
-// ownershipRefreshPeriod is how often tenant shares are refreshed. The
-// desc-fed ring itself only changes on this ingester's heartbeats.
+// ownershipRefreshPeriod is how often tenant shares are refreshed. The ring
+// they are computed from only changes on this ingester's heartbeats.
 const ownershipRefreshPeriod = 10 * time.Second
 
-// ringOwnershipDelegate feeds a desc-fed ring with the ring the Lifecycler
-// reads on every heartbeat, so tracking ownership adds no KV store traffic.
+// ringOwnershipDelegate keeps the ring the Lifecycler reads on every
+// heartbeat, as of the last change that can move a share, so tracking
+// ownership adds no KV store traffic.
 type ringOwnershipDelegate struct {
-	ring atomic.Pointer[ring.Ring]
-
-	// Bumped after each ring update that can change a shuffle-shard pick or
-	// zonal ownership anywhere in the ring.
-	generation atomic.Uint64
+	enabled bool
 
 	mtx sync.Mutex
-	// instanceHash of every instance, as of the last bump.
-	instances map[string]uint64
+	// As of the last change: instanceHash of every instance, a copy of the
+	// desc that nothing modifies, and the number of changes.
+	instances  map[string]uint64
+	desc       *ring.Desc
+	generation uint64
 }
 
 // OnRingInstanceHeartbeat runs inside the Lifecycler's CAS callback, with the
-// ring about to be written to the KV store. UpdateDesc copies it.
+// ring about to be written to the KV store.
 func (d *ringOwnershipDelegate) OnRingInstanceHeartbeat(_ *ring.Lifecycler, ringDesc *ring.Desc) {
-	r := d.ring.Load()
-	if r == nil {
+	if !d.enabled {
 		return
 	}
-	// Callbacks can overlap, so the ring and the record are updated together.
-	d.mtx.Lock()
-	defer d.mtx.Unlock()
-	// Update the ring before bumping the generation, so a refresh that reads
-	// the new generation computes from the new ring.
-	r.UpdateDesc(ringDesc)
-
 	// Heartbeats and state changes other than READONLY change no hash.
 	var h instanceHasher
 	instances := make(map[string]uint64, len(ringDesc.Ingesters))
 	for id, instance := range ringDesc.Ingesters {
 		instances[id] = h.hash(instance)
 	}
-	if d.instances == nil || !maps.Equal(d.instances, instances) {
-		d.instances = instances
-		d.generation.Inc()
+	// Callbacks can overlap.
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.desc != nil && maps.Equal(d.instances, instances) {
+		return
 	}
+	d.instances = instances
+	d.desc = copyDesc(ringDesc)
+	d.generation++
+}
+
+// latest returns the desc as of the last change, and the number of changes.
+func (d *ringOwnershipDelegate) latest() (*ring.Desc, uint64) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	return d.desc, d.generation
+}
+
+// copyDesc copies desc so that what the KV store does with it after the
+// callback, such as merging it into its own state, cannot reach the copy.
+func copyDesc(desc *ring.Desc) *ring.Desc {
+	out := &ring.Desc{Ingesters: maps.Clone(desc.Ingesters)}
+	for id, instance := range out.Ingesters {
+		instance.Tokens = slices.Clone(instance.Tokens)
+		out.Ingesters[id] = instance
+	}
+	return out
 }
 
 // instanceHasher hashes what shuffle-shard picks and zonal ownership read of
@@ -89,9 +105,8 @@ func (h *instanceHasher) hash(instance ring.InstanceDesc) uint64 {
 	return xxhash.Sum64(b)
 }
 
-// newOwnershipRing returns the ring the ownership shares are computed from. It
-// is fed by ringOwnershipDelegate and only a share per tenant is kept, so
-// subrings are not cached.
+// newOwnershipRing returns a ring to compute ownership shares from. Only a
+// share per tenant is kept, so subrings are not cached.
 func newOwnershipRing(cfg ring.Config, kvClient kv.Client, logger log.Logger) (*ring.Ring, error) {
 	cfg.SubringCacheDisabled = true
 	return ring.NewDescFedRing(cfg, "ingester-ownership", RingKey, kvClient, logger)
@@ -115,9 +130,11 @@ func (t *tenantOwnership) share(userID string) (float64, bool) {
 	return s, ok && s > 0
 }
 
-// ownershipRefresher computes tenantOwnership from the desc-fed ring.
+// ownershipRefresher computes tenantOwnership from the ring as of the
+// delegate's last change.
 type ownershipRefresher struct {
-	ring                   *ring.Ring
+	latest                 func() (*ring.Desc, uint64)
+	newRing                func() (*ring.Ring, error)
 	instanceID             string
 	shuffleShardingEnabled bool
 	limits                 *validation.Overrides
@@ -125,11 +142,9 @@ type ownershipRefresher struct {
 	shareGauge             *prometheus.GaugeVec
 	computations           prometheus.Counter
 
-	// generation returns a value that changes whenever the ring changes in a
-	// way that can move a shuffle-shard pick or a share.
-	generation func() uint64
-
-	// Only touched by refresh.
+	// Only touched by refresh. ring is the last one built, and is never
+	// updated, so nothing changes while a refresh reads it.
+	ring           *ring.Ring
 	lastGeneration uint64
 	tenants        map[string]tenantShare
 }
@@ -139,20 +154,16 @@ type tenantShare struct {
 	fingerprint uint64
 	share       float64
 	zones       int
-	// Computed while tokens were shared across zones, or from a whole ring
-	// that changed during the computation: recompute after the next change.
+	// Computed while a token was shared: recompute after the next change.
 	unsure bool
 }
 
-// newOwnershipRefresher returns a refresher reading generation to tell whether
-// the ring changed. A nil generation makes every refresh check every tenant.
-func newOwnershipRefresher(r *ring.Ring, instanceID string, shuffleShardingEnabled bool, limits *validation.Overrides, registerer prometheus.Registerer, generation func() uint64) *ownershipRefresher {
-	if generation == nil {
-		var n uint64
-		generation = func() uint64 { n++; return n }
-	}
+// newOwnershipRefresher returns a refresher that reads the ring from latest,
+// and builds a ring from it with newRing whenever it changed.
+func newOwnershipRefresher(latest func() (*ring.Desc, uint64), newRing func() (*ring.Ring, error), instanceID string, shuffleShardingEnabled bool, limits *validation.Overrides, registerer prometheus.Registerer) *ownershipRefresher {
 	return &ownershipRefresher{
-		ring:                   r,
+		latest:                 latest,
+		newRing:                newRing,
 		instanceID:             instanceID,
 		shuffleShardingEnabled: shuffleShardingEnabled,
 		limits:                 limits,
@@ -165,7 +176,6 @@ func newOwnershipRefresher(r *ring.Ring, instanceID string, shuffleShardingEnabl
 			Name: "cortex_ingester_ring_ownership_computations_total",
 			Help: "Number of times a ring ownership share was computed.",
 		}),
-		generation: generation,
 	}
 }
 
@@ -174,24 +184,29 @@ func (o *ownershipRefresher) refresh(userIDs []string) {
 }
 
 // refreshContext refreshes the shares of userIDs. If ctx is done before every
-// tenant is refreshed, it returns without changing anything.
+// tenant is refreshed, it returns without changing the shares.
 func (o *ownershipRefresher) refreshContext(ctx context.Context, userIDs []string) {
-	if o.ring.InstancesCount() == 0 {
+	desc, generation := o.latest()
+	if len(desc.GetIngesters()) == 0 {
 		return // No heartbeat has fed the ring yet.
 	}
-	// Read first, so a change during this refresh is seen by the next one.
-	generation := o.generation()
 	ringChanged := generation != o.lastGeneration
-	o.lastGeneration = generation
-	// A token shared by two zones lets an instance outside a tenant's subring
-	// decide this zone's ownership, which the fingerprint does not cover.
+	if ringChanged {
+		r, err := o.newRing()
+		if err != nil {
+			return // Not reached: New fails on an invalid config.
+		}
+		r.UpdateDesc(desc)
+		o.ring = r
+	}
+	// A token shared by two instances lets one outside a tenant's subring
+	// decide its ownership, which the fingerprint does not cover.
 	duplicates := o.ring.HasDuplicateTokens()
 
 	w := wholeRingMemo{o: o}
 	tenants := make(map[string]tenantShare, len(userIDs))
 	for _, userID := range userIDs {
 		if ctx.Err() != nil {
-			o.lastGeneration = 0 // Check every tenant next time.
 			return
 		}
 		size := o.shardSize(userID)
@@ -207,10 +222,12 @@ func (o *ownershipRefresher) refreshContext(ctx context.Context, userIDs []strin
 			tenants[userID] = prev // The tenant's subring is as before.
 			continue
 		}
-		t := w.compute(sub, fingerprint, duplicates)
+		t := w.compute(sub, fingerprint)
+		t.unsure = duplicates
 		t.shardSize = size
 		tenants[userID] = t
 	}
+	o.lastGeneration = generation
 	o.tenants = tenants
 	o.publish(tenants)
 }
@@ -264,20 +281,16 @@ func (w *wholeRingMemo) fingerprintOf(sub ring.ReadRing) uint64 {
 	return *w.fingerprint
 }
 
-// compute returns the share of sub. A subring is an immutable snapshot, but
-// the whole ring is the live ring, which a heartbeat can change while it is
-// read: if its fingerprint moved, the share is marked unsure.
-func (w *wholeRingMemo) compute(sub ring.ReadRing, fingerprint uint64, duplicates bool) tenantShare {
+// compute returns the share of sub.
+func (w *wholeRingMemo) compute(sub ring.ReadRing, fingerprint uint64) tenantShare {
 	if !w.isWholeRing(sub) {
 		t := w.o.computeShare(sub)
 		t.fingerprint = fingerprint
-		t.unsure = duplicates
 		return t
 	}
 	if w.share == nil {
 		t := w.o.computeShare(sub)
 		t.fingerprint = fingerprint
-		t.unsure = duplicates || subringFingerprint(sub) != fingerprint
 		w.share = &t
 	}
 	return *w.share

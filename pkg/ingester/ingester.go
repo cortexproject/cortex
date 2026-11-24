@@ -897,7 +897,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		}, i.getOldestUnshippedBlockMetric)
 	}
 
-	ownershipDelegate := &ringOwnershipDelegate{}
+	ownershipDelegate := &ringOwnershipDelegate{enabled: cfg.UseRingOwnershipForLimits}
 	i.lifecycler, err = ring.NewLifecyclerWithDelegate(cfg.LifecyclerConfig, i, "ingester", RingKey, false, cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown, logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer), ownershipDelegate)
 	if err != nil {
 		return nil, err
@@ -917,12 +917,13 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 	)
 
 	if cfg.UseRingOwnershipForLimits {
-		ownershipRing, err := newOwnershipRing(cfg.LifecyclerConfig.RingConfig, i.lifecycler.KVStore, logger)
-		if err != nil {
+		newRing := func() (*ring.Ring, error) {
+			return newOwnershipRing(cfg.LifecyclerConfig.RingConfig, i.lifecycler.KVStore, logger)
+		}
+		if _, err := newRing(); err != nil {
 			return nil, errors.Wrap(err, "failed to create the ring for ownership-based limits")
 		}
-		ownershipDelegate.ring.Store(ownershipRing)
-		i.ownershipRefresher = newOwnershipRefresher(ownershipRing, i.lifecycler.ID, i.limiter.shuffleShardingEnabled, limits, registerer, ownershipDelegate.generation.Load)
+		i.ownershipRefresher = newOwnershipRefresher(ownershipDelegate.latest, newRing, i.lifecycler.ID, i.limiter.shuffleShardingEnabled, limits, registerer)
 		i.limiter.ownership = i.ownershipRefresher.ownership
 	}
 

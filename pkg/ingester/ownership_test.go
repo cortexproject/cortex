@@ -756,9 +756,9 @@ func TestOwnershipRefresher_TokenSharedAcrossZones(t *testing.T) {
 		prepare         func(*ring.Desc)
 		change          func(*ring.Desc)
 	}{
-		"the instance holding it in another zone becomes READONLY": {
+		"the instance holding it in another zone leaves": {
 			sharedFromStart: true,
-			change:          setOwnershipTestState(collider, ring.READONLY),
+			change:          func(d *ring.Desc) { d.RemoveIngester(collider) },
 		},
 		"an instance joins another zone with it": {
 			change: func(d *ring.Desc) {

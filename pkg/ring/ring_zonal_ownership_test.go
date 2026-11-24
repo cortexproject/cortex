@@ -146,6 +146,26 @@ func TestRing_ZonalOwnership_DuplicateTokenOwnsNoExtraRange(t *testing.T) {
 	assert.InDelta(t, 0.5, got["a2"], ownershipTolerance)
 }
 
+// A token shared across zones maps to one instance ring-wide. Get skips it in
+// the other zone, whose range then falls to that zone's next token.
+func TestRing_ZonalOwnership_TokenSharedAcrossZones(t *testing.T) {
+	q := uint32(quarterOfRing)
+	// b1 sorts after a2, so the ring-wide token map gives 2q to b1.
+	desc := newOwnershipTestDesc([]ownershipTestInstance{
+		{id: "a1", zone: "a", tokens: []uint32{q}, state: ACTIVE},
+		{id: "a2", zone: "a", tokens: []uint32{2 * q}, state: ACTIVE},
+		{id: "a3", zone: "a", tokens: []uint32{3 * q}, state: ACTIVE},
+		{id: "b1", zone: "b", tokens: []uint32{2 * q}, state: ACTIVE},
+		{id: "b2", zone: "b", tokens: []uint32{0}, state: ACTIVE},
+	})
+	got := newOwnershipTestRing(t, 2, desc).ZonalOwnership()
+
+	expected := map[string]float64{"a1": 0.5, "a2": 0, "a3": 0.5, "b1": 0.5, "b2": 0.5}
+	for id, share := range expected {
+		assert.InDelta(t, share, got[id], ownershipTolerance, id)
+	}
+}
+
 // randomOwnershipInstances builds a ring with random unique tokens. stateOf
 // gives the state of instance i in zone z; nil means every instance is ACTIVE.
 func randomOwnershipInstances(rnd *rand.Rand, zones, perZone, tokensPerInstance int, stateOf func(z, i int) InstanceState) []ownershipTestInstance {

@@ -40,6 +40,8 @@ func (r *Ring) HasDuplicateTokens() bool {
 // Every instance owns the ranges of its tokens, except READONLY instances:
 // writes skip them, and their ranges fall to the next instance in the same
 // zone, which is the instance Get extends to. READONLY instances report 0.
+// A token shared across zones counts only in the zone of the instance the
+// ring's token map holds for it, which is where Get sends its keys.
 // This is where writes go with -distributor.extend-writes=false. With it on,
 // writes also skip JOINING, LEAVING and PENDING instances, which this does not
 // model.
@@ -80,11 +82,13 @@ func (r *Ring) computeZonalOwnership() map[string]float64 {
 		ownership[id] = 0
 	}
 
-	for _, zoneTokens := range r.ringTokensByZone {
+	for zone, zoneTokens := range r.ringTokensByZone {
 		// Tokens are sorted, so the remaining tokens stay sorted.
 		remaining := make([]uint32, 0, len(zoneTokens))
 		for _, token := range zoneTokens {
-			if r.ownsToken(token) {
+			// Get routes a token shared across zones to the instance the token
+			// map holds; another zone's copy leaves its range to the next token.
+			if r.ownsToken(token) && r.ringInstanceByToken[token].Zone == zone {
 				remaining = append(remaining, token)
 			}
 		}

@@ -499,8 +499,8 @@ func TestOwnershipRefresher_ComputesOwnershipOnlyWhenTheSubringChanges(t *testin
 }
 
 // A neighbour going from LEAVING to READONLY moves this ingester's share,
-// because shard picks skip READONLY instances. On this layout the share goes
-// from 0 to about 0.54.
+// because a shard picks one more instance for each READONLY one it includes.
+// On this layout the share goes from 0 to about 0.54.
 func TestOwnershipRefresher_ReadOnlyNeighbourChangesTheShardPick(t *testing.T) {
 	// The tenant name and the seed below pick a layout where this happens.
 	const tenant = "t"

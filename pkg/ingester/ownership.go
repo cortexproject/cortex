@@ -61,8 +61,9 @@ func (d *ringOwnershipDelegate) latest() *ring.Desc {
 
 // sharesMayDiffer reports whether a and b differ in what shuffle-shard picks
 // and zonal ownership read: the instances, and each one's zone, tokens and
-// whether it is READONLY. Picks skip READONLY instances and zonal ownership
-// leaves them out, so no other state matters.
+// whether it is READONLY. A shard picks one more instance for each READONLY
+// one it includes, and zonal ownership leaves READONLY instances out, so no
+// other state matters.
 func sharesMayDiffer(a, b *ring.Desc) bool {
 	if len(a.Ingesters) != len(b.Ingesters) {
 		return true

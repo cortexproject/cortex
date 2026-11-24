@@ -1044,10 +1044,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 	if i.ownershipRefresher != nil {
 		// Its own service: after a ring change a refresh can take seconds, which
 		// must not delay updateLoop and the ingestion rate it ticks.
-		servs = append(servs, services.NewTimerService(ownershipRefreshPeriod, nil, func(ctx context.Context) error {
-			i.ownershipRefresher.refresh(ctx, i.getTSDBUsers())
-			return nil
-		}, nil))
+		servs = append(servs, services.NewTimerService(ownershipRefreshPeriod, nil, i.refreshOwnership, nil))
 	}
 
 	if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {

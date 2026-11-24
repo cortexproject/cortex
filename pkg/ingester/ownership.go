@@ -188,6 +188,13 @@ func newOwnershipRefresher(latest func() *ring.Desc, newRing func() (*ring.Ring,
 	}
 }
 
+// refreshOwnership refreshes the ownership shares of the ingester's tenants,
+// as the iteration of a service of its own that stops it when ctx is done.
+func (i *Ingester) refreshOwnership(ctx context.Context) error {
+	i.ownershipRefresher.refresh(ctx, i.getTSDBUsers())
+	return nil
+}
+
 // refresh refreshes the shares of userIDs. If ctx is done before every tenant
 // is refreshed, it returns without changing the shares.
 func (o *ownershipRefresher) refresh(ctx context.Context, userIDs []string) {

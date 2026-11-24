@@ -20,6 +20,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -1162,6 +1164,45 @@ func TestOwnershipRefresher_OwnChangeOutsideTheSubring(t *testing.T) {
 
 	assert.Equal(t, computed, testutil.ToFloat64(refresher.computations))
 	assert.Equal(t, freshOwnershipShares(t, desc, me, overrides, []string{tenant}), comparableShares(refresher.tenants))
+}
+
+// The ingester's refresh publishes the shares of its tenants to its limiter,
+// from the ring its lifecycler heartbeats, and one stopped by the service's
+// context publishes nothing.
+func TestIngester_RefreshOwnership(t *testing.T) {
+	const userID = "user-1"
+	cfg := defaultIngesterTestConfig(t)
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.LifecyclerConfig.HeartbeatPeriod = 100 * time.Millisecond
+	cfg.LifecyclerConfig.Zone = "zone-a"
+	cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = true
+	cfg.LifecyclerConfig.RingConfig.ReplicationFactor = 1
+	cfg.UseRingOwnershipForLimits = true
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	// Only the lifecycler runs, so the ingester's own refresh service does not
+	// refresh at the same time as the test.
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i.lifecycler))
+	t.Cleanup(func() { assert.NoError(t, services.StopAndAwaitTerminated(context.Background(), i.lifecycler)) })
+	i.lifecycler.Join()
+	test.Poll(t, 5*time.Second, true, func() any {
+		return len(i.ownershipRefresher.latest().GetIngesters()[cfg.LifecyclerConfig.ID].Tokens) > 0
+	})
+	_, err = i.getOrCreateTSDB(userID, true)
+	require.NoError(t, err)
+	t.Cleanup(i.closeAllTSDB)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.NoError(t, i.refreshOwnership(ctx))
+	_, ok := i.limiter.ownership.share(userID)
+	assert.False(t, ok, "a stopped refresh publishes nothing")
+
+	require.NoError(t, i.refreshOwnership(context.Background()))
+	share, ok := i.limiter.ownership.share(userID)
+	require.True(t, ok)
+	assert.Equal(t, 1.0, share, "the only ingester owns all of its zone")
 }
 
 func TestInstanceHasher(t *testing.T) {

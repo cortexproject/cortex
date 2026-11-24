@@ -184,13 +184,9 @@ func newOwnershipRefresher(latest func() *ring.Desc, newRing func() (*ring.Ring,
 	}
 }
 
-func (o *ownershipRefresher) refresh(userIDs []string) {
-	o.refreshContext(context.Background(), userIDs)
-}
-
-// refreshContext refreshes the shares of userIDs. If ctx is done before every
-// tenant is refreshed, it returns without changing the shares.
-func (o *ownershipRefresher) refreshContext(ctx context.Context, userIDs []string) {
+// refresh refreshes the shares of userIDs. If ctx is done before every tenant
+// is refreshed, it returns without changing the shares.
+func (o *ownershipRefresher) refresh(ctx context.Context, userIDs []string) {
 	desc := o.latest()
 	if len(desc.GetIngesters()) == 0 {
 		return // No heartbeat has fed the ring yet.

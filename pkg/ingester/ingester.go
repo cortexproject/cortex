@@ -1045,7 +1045,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		// Its own service: after a ring change a refresh can take seconds, which
 		// must not delay updateLoop and the ingestion rate it ticks.
 		servs = append(servs, services.NewTimerService(ownershipRefreshPeriod, nil, func(ctx context.Context) error {
-			i.ownershipRefresher.refreshContext(ctx, i.getTSDBUsers())
+			i.ownershipRefresher.refresh(ctx, i.getTSDBUsers())
 			return nil
 		}, nil))
 	}

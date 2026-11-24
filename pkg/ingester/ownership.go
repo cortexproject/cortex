@@ -163,8 +163,9 @@ type tenantShare struct {
 	self  uint64
 	share float64
 	zones int
-	// Computed while a token was shared: recompute after the next change.
-	unsure bool
+	// A token was held twice when this share was computed: recompute it after
+	// the next change.
+	duplicates bool
 }
 
 // newOwnershipRefresher returns a refresher that reads the desc from latest,
@@ -239,13 +240,13 @@ func (o *ownershipRefresher) refresh(ctx context.Context, userIDs []string) {
 		if sub.HasInstance(o.instanceID) {
 			member = self
 		}
-		if known && prev.fingerprint == fingerprint && prev.self == member && !prev.unsure && !duplicates {
+		if known && prev.fingerprint == fingerprint && prev.self == member && !prev.duplicates && !duplicates {
 			tenants[userID] = prev // The tenant's subring is as before.
 			continue
 		}
 		t := w.compute(sub, fingerprint)
 		t.self = member
-		t.unsure = duplicates
+		t.duplicates = duplicates
 		t.shardSize = size
 		tenants[userID] = t
 	}

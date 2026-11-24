@@ -683,7 +683,7 @@ func testOwnershipRefresherCachedSharesMatchFreshComputation(t *testing.T, share
 func comparableShares(tenants map[string]tenantShare) map[string]tenantShare {
 	out := make(map[string]tenantShare, len(tenants))
 	for id, t := range tenants {
-		t.unsure = false
+		t.duplicates = false
 		out[id] = t
 	}
 	return out

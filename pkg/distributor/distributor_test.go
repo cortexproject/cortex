@@ -133,6 +133,42 @@ func TestConfig_Validate(t *testing.T) {
 	}
 }
 
+func TestDistributor_PushAfterStopShouldNotPanic(t *testing.T) {
+	t.Parallel()
+
+	ds, ingesters, _, _ := prepare(t, prepConfig{
+		numIngesters:     3,
+		happyIngesters:   3,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		numPushWorkers:   2,
+	})
+
+	// Simulate the shutdown window: the distributor has stopped, but the
+	// HTTP/gRPC server is still accepting requests until every other module
+	// terminates, so a push can still reach the distributor.
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ds[0]))
+
+	ctx := user.InjectOrgID(context.Background(), "user")
+	require.NotPanics(t, func() {
+		_, err := ds[0].Push(ctx, makeWriteRequest(0, 5, 0, 0))
+		require.NoError(t, err)
+	})
+
+	// The push must still reach the ingesters through the stopped pool.
+	test.Poll(t, time.Second, nil, func() any {
+		for _, ing := range ingesters {
+			ing.Lock()
+			pushCalls := ing.calls["Push"]
+			ing.Unlock()
+			if pushCalls == 0 {
+				return fmt.Errorf("ingester has not received push yet")
+			}
+		}
+		return nil
+	})
+}
+
 func TestDistributor_Push(t *testing.T) {
 	t.Parallel()
 	// Metrics to assert on.
@@ -3276,6 +3312,7 @@ type prepConfig struct {
 	useStreamPush                bool
 	nameValidationScheme         model.ValidationScheme
 	remoteTimeout                time.Duration
+	numPushWorkers               int
 }
 
 type prepState struct {
@@ -3391,6 +3428,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 		distributorCfg.InstanceLimits.MaxInflightClientRequests = cfg.maxInflightClientRequests
 		distributorCfg.InstanceLimits.MaxIngestionRate = cfg.maxIngestionRate
 		distributorCfg.UseStreamPush = cfg.useStreamPush
+		distributorCfg.NumPushWorkers = cfg.numPushWorkers
 		distributorCfg.NameValidationScheme = model.LegacyValidation
 		if cfg.nameValidationScheme == model.UTF8Validation {
 			distributorCfg.NameValidationScheme = cfg.nameValidationScheme

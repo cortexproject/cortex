@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -54,6 +55,23 @@ func TestWorkerPool_TestMetric(t *testing.T) {
 `), "cortex_worker_pool_fallback_total"))
 
 	wg.Done()
+}
+
+func TestWorkerPool_SubmitAfterStopShouldNotPanic(t *testing.T) {
+	workerPool := NewWorkerPool("test1", 2, prometheus.NewPedanticRegistry())
+	workerPool.Stop()
+
+	done := make(chan struct{})
+	require.NotPanics(t, func() {
+		workerPool.Submit(func() { close(done) })
+	})
+
+	// The job must still run even though the pool is stopped.
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("job submitted after Stop was never executed")
+	}
 }
 
 func TestWorkerPool_ShouldFallbackWhenAllWorkersAreBusy(t *testing.T) {

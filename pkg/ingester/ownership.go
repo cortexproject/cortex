@@ -158,8 +158,11 @@ type ownershipRefresher struct {
 type tenantShare struct {
 	shardSize   int
 	fingerprint uint64
-	share       float64
-	zones       int
+	// This ingester's hash if it is in the subring, else 0: the fingerprint
+	// does not tell which member is this ingester.
+	self  uint64
+	share float64
+	zones int
 	// Computed while a token was shared: recompute after the next change.
 	unsure bool
 }
@@ -204,6 +207,11 @@ func (o *ownershipRefresher) refresh(ctx context.Context, userIDs []string) {
 	// A token shared by two instances lets one outside a tenant's subring
 	// decide its ownership, which the fingerprint does not cover.
 	duplicates := o.ring.HasDuplicateTokens()
+	var self uint64
+	if instance, ok := desc.Ingesters[o.instanceID]; ok {
+		var h instanceHasher
+		self = h.hash(instance)
+	}
 
 	w := wholeRingMemo{o: o}
 	tenants := make(map[string]tenantShare, len(userIDs))
@@ -220,11 +228,16 @@ func (o *ownershipRefresher) refresh(ctx context.Context, userIDs []string) {
 		}
 		sub := o.subring(userID, size)
 		fingerprint := w.fingerprintOf(sub)
-		if known && prev.fingerprint == fingerprint && !prev.unsure && !duplicates {
+		member := uint64(0)
+		if sub.HasInstance(o.instanceID) {
+			member = self
+		}
+		if known && prev.fingerprint == fingerprint && prev.self == member && !prev.unsure && !duplicates {
 			tenants[userID] = prev // The tenant's subring is as before.
 			continue
 		}
 		t := w.compute(sub, fingerprint)
+		t.self = member
 		t.unsure = duplicates
 		t.shardSize = size
 		tenants[userID] = t

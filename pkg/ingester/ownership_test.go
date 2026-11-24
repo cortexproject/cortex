@@ -1102,6 +1102,68 @@ func TestOwnershipRefresher_ChangesDuringARefreshUndone(t *testing.T) {
 	}
 }
 
+// The fingerprint sums the members' hashes, so it stays the same when this
+// ingester and a neighbour in its zone swap their tokens, but this ingester's
+// share does not.
+func TestOwnershipRefresher_TokensSwappedWithANeighbour(t *testing.T) {
+	const tenant = "whole"
+	me := ownershipTestInstanceID(0, 0)
+	neighbour := ownershipTestInstanceID(0, 1)
+	layout := ownershipTestRingLayout{zones: 3, perZone: 4, tokensPerInstance: 16}
+	desc := newOwnershipTestDesc(rand.New(rand.NewSource(ownershipTestSeed)), layout)
+	overrides := validation.NewOverrides(validation.Limits{}, nil)
+	tenants := []string{tenant}
+
+	d, newRing := newOwnershipTestDelegate(t, me, layout.zones)
+	d.OnRingInstanceHeartbeat(nil, cloneOwnershipTestDesc(desc))
+	refresher := newOwnershipRefresher(d.latest, newRing, me, true, overrides, nil)
+	refresher.refresh(context.Background(), tenants)
+
+	swapped := cloneOwnershipTestDesc(desc)
+	a, b := swapped.Ingesters[me], swapped.Ingesters[neighbour]
+	a.Tokens, b.Tokens = b.Tokens, a.Tokens
+	swapped.Ingesters[me], swapped.Ingesters[neighbour] = a, b
+	d.OnRingInstanceHeartbeat(nil, cloneOwnershipTestDesc(swapped))
+	refresher.refresh(context.Background(), tenants)
+
+	fresh := freshOwnershipShares(t, swapped, me, overrides, tenants)
+	require.NotEqual(t, freshOwnershipShares(t, desc, me, overrides, tenants)[tenant].share, fresh[tenant].share, "the layout must make the swap move the share")
+	assert.Equal(t, fresh, comparableShares(refresher.tenants))
+}
+
+// A change of this ingester's own instance recomputes only the tenants whose
+// subring it is in: elsewhere its share stays 0.
+func TestOwnershipRefresher_OwnChangeOutsideTheSubring(t *testing.T) {
+	const shardSize = 3
+	me := ownershipTestInstanceID(0, 0)
+	layout := ownershipTestRingLayout{zones: 3, perZone: 4, tokensPerInstance: 16}
+	desc := newOwnershipTestDesc(rand.New(rand.NewSource(ownershipTestSeed)), layout)
+	d, newRing := newOwnershipTestDelegate(t, me, layout.zones)
+	r, err := newRing()
+	require.NoError(t, err)
+	r.UpdateDesc(desc)
+	// A tenant whose shard leaves this ingester out.
+	tenant := ""
+	for i := 0; tenant == ""; i++ {
+		if candidate := fmt.Sprintf("tenant-%d", i); !r.ShuffleShard(candidate, shardSize).HasInstance(me) {
+			tenant = candidate
+		}
+	}
+	overrides := validation.NewOverrides(validation.Limits{}, &staticTenantLimits{limits: map[string]*validation.Limits{tenant: {IngestionTenantShardSize: shardSize}}})
+
+	d.OnRingInstanceHeartbeat(nil, cloneOwnershipTestDesc(desc))
+	refresher := newOwnershipRefresher(d.latest, newRing, me, true, overrides, nil)
+	refresher.refresh(context.Background(), []string{tenant})
+	computed := testutil.ToFloat64(refresher.computations)
+
+	setOwnershipTestState(me, ring.READONLY)(desc)
+	d.OnRingInstanceHeartbeat(nil, cloneOwnershipTestDesc(desc))
+	refresher.refresh(context.Background(), []string{tenant})
+
+	assert.Equal(t, computed, testutil.ToFloat64(refresher.computations))
+	assert.Equal(t, freshOwnershipShares(t, desc, me, overrides, []string{tenant}), comparableShares(refresher.tenants))
+}
+
 func TestInstanceHasher(t *testing.T) {
 	instance := func(zone string, state ring.InstanceState, tokens ...uint32) ring.InstanceDesc {
 		return ring.InstanceDesc{Zone: zone, State: state, Tokens: tokens}

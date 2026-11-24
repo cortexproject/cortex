@@ -91,7 +91,7 @@ func TestRingOwnershipDelegate_KeepsACopyOfTheDesc(t *testing.T) {
 	desc.RemoveIngester("a-2")
 	slices.Sort(desc.Ingesters["a-1"].Tokens)
 
-	kept, _ := d.latest()
+	kept := d.latest()
 	assert.Contains(t, kept.Ingesters, "a-2")
 	assert.Equal(t, []uint32{300, 100}, kept.Ingesters["a-1"].Tokens)
 
@@ -112,8 +112,7 @@ func TestRingOwnershipDelegate_KeepsACopyOfTheDesc(t *testing.T) {
 func TestRingOwnershipDelegate_Disabled(t *testing.T) {
 	d := &ringOwnershipDelegate{}
 	d.OnRingInstanceHeartbeat(nil, newOwnershipTestDesc(rand.New(rand.NewSource(ownershipTestSeed)), ownershipTestRingLayout{zones: 3, perZone: 1, tokensPerInstance: 1}))
-	desc, _ := d.latest()
-	assert.Nil(t, desc)
+	assert.Nil(t, d.latest())
 }
 
 func TestOwnershipRefresher(t *testing.T) {
@@ -327,11 +326,6 @@ func newOwnershipTestDelegate(t *testing.T, _ string, replicationFactor int, exc
 	}
 }
 
-func generationOf(d *ringOwnershipDelegate) uint64 {
-	_, generation := d.latest()
-	return generation
-}
-
 // cloneOwnershipTestDesc returns a copy of desc that a test can modify.
 func cloneOwnershipTestDesc(desc *ring.Desc) *ring.Desc {
 	out := ring.NewDesc()
@@ -360,7 +354,7 @@ func TestNewOwnershipRing_DoesNotCacheSubrings(t *testing.T) {
 	assert.NotSame(t, r.ShuffleShard("tenant", 6), r.ShuffleShard("tenant", 6))
 }
 
-func TestRingOwnershipDelegate_Generation(t *testing.T) {
+func TestRingOwnershipDelegate_KeepsADescOnEachChange(t *testing.T) {
 	me := ownershipTestInstanceID(0, 0)
 	neighbour := ownershipTestInstanceID(0, 1)
 	other := ownershipTestInstanceID(1, 0)
@@ -376,7 +370,7 @@ func TestRingOwnershipDelegate_Generation(t *testing.T) {
 	tests := map[string]struct {
 		prepare func(*ring.Desc)
 		change  func(*ring.Desc)
-		bumped  bool
+		changed bool
 	}{
 		"heartbeat only": {change: func(d *ring.Desc) {
 			for id, instance := range d.Ingesters {
@@ -387,16 +381,16 @@ func TestRingOwnershipDelegate_Generation(t *testing.T) {
 		"a state change other than READONLY in my zone":    {change: setOwnershipTestState(neighbour, ring.LEAVING)},
 		"a state change other than READONLY in other zone": {change: setOwnershipTestState(other, ring.JOINING)},
 		"my own state change":                              {change: setOwnershipTestState(me, ring.LEAVING)},
-		"an instance becomes READONLY in my zone":          {change: setOwnershipTestState(neighbour, ring.READONLY), bumped: true},
-		"an instance becomes READONLY in another zone":     {change: setOwnershipTestState(other, ring.READONLY), bumped: true},
+		"an instance becomes READONLY in my zone":          {change: setOwnershipTestState(neighbour, ring.READONLY), changed: true},
+		"an instance becomes READONLY in another zone":     {change: setOwnershipTestState(other, ring.READONLY), changed: true},
 		"an instance stops being READONLY": {
-			prepare: setOwnershipTestState(other, ring.READONLY), change: setOwnershipTestState(other, ring.ACTIVE), bumped: true,
+			prepare: setOwnershipTestState(other, ring.READONLY), change: setOwnershipTestState(other, ring.ACTIVE), changed: true,
 		},
 		"an instance joins": {
-			change: func(d *ring.Desc) { d.AddIngester("new", "new", "zone-1", []uint32{42}, ring.JOINING, time.Time{}) }, bumped: true,
+			change: func(d *ring.Desc) { d.AddIngester("new", "new", "zone-1", []uint32{42}, ring.JOINING, time.Time{}) }, changed: true,
 		},
-		"an instance leaves": {change: func(d *ring.Desc) { d.RemoveIngester(other) }, bumped: true},
-		"tokens change":      {change: changeTokens(other), bumped: true},
+		"an instance leaves": {change: func(d *ring.Desc) { d.RemoveIngester(other) }, changed: true},
+		"tokens change":      {change: changeTokens(other), changed: true},
 		"a tokenless instance gets tokens": {
 			prepare: func(d *ring.Desc) { d.AddIngester("new", "new", "zone-new", nil, ring.PENDING, time.Time{}) },
 			change: func(d *ring.Desc) {
@@ -404,15 +398,20 @@ func TestRingOwnershipDelegate_Generation(t *testing.T) {
 				instance.Tokens = []uint32{42}
 				d.Ingesters["new"] = instance
 			},
-			bumped: true,
+			changed: true,
 		},
+		"an address change": {change: func(d *ring.Desc) {
+			instance := d.Ingesters[other]
+			instance.Addr = "moved"
+			d.Ingesters[other] = instance
+		}},
 		"an instance changes zone": {
 			change: func(d *ring.Desc) {
 				instance := d.Ingesters[other]
 				instance.Zone = "zone-2"
 				d.Ingesters[other] = instance
 			},
-			bumped: true,
+			changed: true,
 		},
 	}
 
@@ -424,13 +423,14 @@ func TestRingOwnershipDelegate_Generation(t *testing.T) {
 				tc.prepare(desc)
 			}
 			d.OnRingInstanceHeartbeat(nil, desc)
-			require.Equal(t, uint64(1), generationOf(d), "the first ring is a change")
+			first := d.latest()
+			require.NotNil(t, first, "the first ring is a change")
 
 			next := cloneOwnershipTestDesc(desc)
 			tc.change(next)
 			d.OnRingInstanceHeartbeat(nil, next)
 
-			assert.Equal(t, tc.bumped, generationOf(d) != 1)
+			assert.Equal(t, tc.changed, d.latest() != first)
 		})
 	}
 }
@@ -662,9 +662,9 @@ func testOwnershipRefresherCachedSharesMatchFreshComputation(t *testing.T, share
 			next.Ingesters[id] = instance
 		}
 		desc = next
-		before := generationOf(d)
+		before := d.latest()
 		d.OnRingInstanceHeartbeat(nil, cloneOwnershipTestDesc(desc))
-		if generationOf(d) != before {
+		if d.latest() != before {
 			bumps++
 		}
 		refresher.refresh(tenants)
@@ -672,7 +672,7 @@ func testOwnershipRefresherCachedSharesMatchFreshComputation(t *testing.T, share
 		require.Equal(t, freshOwnershipShares(t, desc, me, overrides, tenants), comparableShares(refresher.tenants), "step %d", step)
 	}
 	// Not a correctness condition: shows the test exercises reuse.
-	t.Logf("the generation changed on %d of %d steps; ownership computed %v times", bumps, steps, testutil.ToFloat64(refresher.computations))
+	t.Logf("the ring changed on %d of %d steps; ownership computed %v times", bumps, steps, testutil.ToFloat64(refresher.computations))
 	assert.Less(t, bumps, steps)
 }
 
@@ -688,9 +688,8 @@ func comparableShares(tenants map[string]tenantShare) map[string]tenantShare {
 }
 
 // Heartbeat callbacks can overlap: the Lifecycler's first heartbeat runs on its
-// own goroutine. If the desc were kept outside the delegate's lock, one
-// callback could keep its desc after another, then compare first and find no
-// change, leaving the kept desc and the recorded hashes different for good.
+// own goroutine. A callback must not compare or replace the kept desc while
+// another holds the delegate's lock.
 func TestRingOwnershipDelegate_KeepsTheDescUnderTheLock(t *testing.T) {
 	const wait = 50 * time.Millisecond
 	me := ownershipTestInstanceID(0, 0)
@@ -714,10 +713,7 @@ func TestRingOwnershipDelegate_KeepsTheDescUnderTheLock(t *testing.T) {
 	d.mtx.Unlock()
 
 	<-done
-	kept, _ := d.latest()
-	assert.Equal(t, ring.READONLY, kept.Ingesters[neighbour].State)
-	var h instanceHasher
-	assert.Equal(t, h.hash(readOnly.Ingesters[neighbour]), d.instances[neighbour])
+	assert.Equal(t, ring.READONLY, d.latest().Ingesters[neighbour].State)
 }
 
 // freshOwnershipShares computes the shares from scratch on a new ring, so a bug
@@ -889,8 +885,8 @@ func TestOwnershipRefresher_WholeRingFlagDescribesTheRingUsed(t *testing.T) {
 	assert.Equal(t, fresh, comparableShares(refresher.tenants))
 }
 
-// The ring leaves excluded zones out, so changes there bump the generation
-// but leave every tenant's subring, and so its share, as it was.
+// The ring leaves excluded zones out, so changes there count as changes but
+// leave every tenant's subring, and so its share, as it was.
 func TestOwnershipRefresher_ExcludedZones(t *testing.T) {
 	const tenant = "tenant"
 	me := ownershipTestInstanceID(0, 0)
@@ -1040,7 +1036,7 @@ func TestOwnershipRefresher_WholeRingChangedDuringARefreshAndBack(t *testing.T) 
 	assert.Equal(t, freshOwnershipShares(t, back, me, overrides, tenants), comparableShares(refresher.tenants))
 }
 
-// Randomized: each step a new ring bumps the generation, so the next refresh
+// Randomized: each step a new ring replaces the kept desc, so the next refresh
 // checks every tenant; during that refresh, at a random tenant, a second change
 // lands, and it is undone before the following refresh. Tenants are refreshed
 // in a random order. The shares must then equal those computed from scratch.

@@ -26,18 +26,15 @@ var errRingOwnershipRequiresZoneAwareness = errors.New("-ingester.use-ring-owner
 // they are computed from only changes on this ingester's heartbeats.
 const ownershipRefreshPeriod = 10 * time.Second
 
-// ringOwnershipDelegate keeps the ring the Lifecycler reads on every
+// ringOwnershipDelegate keeps a copy of the ring the Lifecycler writes on each
 // heartbeat, as of the last change that can move a share, so tracking
 // ownership adds no KV store traffic.
 type ringOwnershipDelegate struct {
 	enabled bool
 
 	mtx sync.Mutex
-	// As of the last change: instanceHash of every instance, a copy of the
-	// desc that nothing modifies, and the number of changes.
-	instances  map[string]uint64
-	desc       *ring.Desc
-	generation uint64
+	// Nothing modifies the copy: each change replaces it with a new one.
+	desc *ring.Desc
 }
 
 // OnRingInstanceHeartbeat runs inside the Lifecycler's CAS callback, with the
@@ -46,28 +43,37 @@ func (d *ringOwnershipDelegate) OnRingInstanceHeartbeat(_ *ring.Lifecycler, ring
 	if !d.enabled {
 		return
 	}
-	// Heartbeats and state changes other than READONLY change no hash.
-	var h instanceHasher
-	instances := make(map[string]uint64, len(ringDesc.Ingesters))
-	for id, instance := range ringDesc.Ingesters {
-		instances[id] = h.hash(instance)
-	}
 	// Callbacks can overlap.
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	if d.desc != nil && maps.Equal(d.instances, instances) {
-		return
+	if d.desc == nil || sharesMayDiffer(d.desc, ringDesc) {
+		d.desc = copyDesc(ringDesc)
 	}
-	d.instances = instances
-	d.desc = copyDesc(ringDesc)
-	d.generation++
 }
 
-// latest returns the desc as of the last change, and the number of changes.
-func (d *ringOwnershipDelegate) latest() (*ring.Desc, uint64) {
+// latest returns the copy as of the last change. Each change replaces it, so a
+// different pointer means a different ring.
+func (d *ringOwnershipDelegate) latest() *ring.Desc {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
-	return d.desc, d.generation
+	return d.desc
+}
+
+// sharesMayDiffer reports whether a and b differ in what shuffle-shard picks
+// and zonal ownership read: the instances, and each one's zone, tokens and
+// whether it is READONLY. Picks skip READONLY instances and zonal ownership
+// leaves them out, so no other state matters.
+func sharesMayDiffer(a, b *ring.Desc) bool {
+	if len(a.Ingesters) != len(b.Ingesters) {
+		return true
+	}
+	for id, x := range a.Ingesters {
+		y, ok := b.Ingesters[id]
+		if !ok || x.Zone != y.Zone || (x.State == ring.READONLY) != (y.State == ring.READONLY) || !slices.Equal(x.Tokens, y.Tokens) {
+			return true
+		}
+	}
+	return false
 }
 
 // copyDesc copies desc so that what the KV store does with it after the
@@ -81,10 +87,8 @@ func copyDesc(desc *ring.Desc) *ring.Desc {
 	return out
 }
 
-// instanceHasher hashes what shuffle-shard picks and zonal ownership read of
-// an instance: its zone, whether it is READONLY, and its tokens. Picks skip
-// READONLY instances and zonal ownership leaves them out, so no other state
-// matters. It reuses one buffer across calls.
+// instanceHasher hashes the fields of an instance that sharesMayDiffer
+// compares. It reuses one buffer across calls.
 type instanceHasher struct {
 	buf []byte
 }
@@ -133,7 +137,7 @@ func (t *tenantOwnership) share(userID string) (float64, bool) {
 // ownershipRefresher computes tenantOwnership from the ring as of the
 // delegate's last change.
 type ownershipRefresher struct {
-	latest                 func() (*ring.Desc, uint64)
+	latest                 func() *ring.Desc
 	newRing                func() (*ring.Ring, error)
 	instanceID             string
 	shuffleShardingEnabled bool
@@ -143,10 +147,11 @@ type ownershipRefresher struct {
 	computations           prometheus.Counter
 
 	// Only touched by refresh. ring is the last one built, and is never
-	// updated, so nothing changes while a refresh reads it.
-	ring           *ring.Ring
-	lastGeneration uint64
-	tenants        map[string]tenantShare
+	// updated, so nothing changes while a refresh reads it. lastDesc is the
+	// desc the last complete refresh read.
+	ring     *ring.Ring
+	lastDesc *ring.Desc
+	tenants  map[string]tenantShare
 }
 
 type tenantShare struct {
@@ -158,9 +163,9 @@ type tenantShare struct {
 	unsure bool
 }
 
-// newOwnershipRefresher returns a refresher that reads the ring from latest,
+// newOwnershipRefresher returns a refresher that reads the desc from latest,
 // and builds a ring from it with newRing whenever it changed.
-func newOwnershipRefresher(latest func() (*ring.Desc, uint64), newRing func() (*ring.Ring, error), instanceID string, shuffleShardingEnabled bool, limits *validation.Overrides, registerer prometheus.Registerer) *ownershipRefresher {
+func newOwnershipRefresher(latest func() *ring.Desc, newRing func() (*ring.Ring, error), instanceID string, shuffleShardingEnabled bool, limits *validation.Overrides, registerer prometheus.Registerer) *ownershipRefresher {
 	return &ownershipRefresher{
 		latest:                 latest,
 		newRing:                newRing,
@@ -186,11 +191,11 @@ func (o *ownershipRefresher) refresh(userIDs []string) {
 // refreshContext refreshes the shares of userIDs. If ctx is done before every
 // tenant is refreshed, it returns without changing the shares.
 func (o *ownershipRefresher) refreshContext(ctx context.Context, userIDs []string) {
-	desc, generation := o.latest()
+	desc := o.latest()
 	if len(desc.GetIngesters()) == 0 {
 		return // No heartbeat has fed the ring yet.
 	}
-	ringChanged := generation != o.lastGeneration
+	ringChanged := desc != o.lastDesc
 	if ringChanged {
 		r, err := o.newRing()
 		if err != nil {
@@ -227,7 +232,7 @@ func (o *ownershipRefresher) refreshContext(ctx context.Context, userIDs []strin
 		t.shardSize = size
 		tenants[userID] = t
 	}
-	o.lastGeneration = generation
+	o.lastDesc = desc
 	o.tenants = tenants
 	o.publish(tenants)
 }

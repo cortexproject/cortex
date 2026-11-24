@@ -133,10 +133,16 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 		level.Debug(g.logger).Log("msg", "compactor is not on the current sub-ring skipping user", "user", g.userID)
 		return outGroups, nil
 	}
-	// Metrics for the remaining planned compactions
-	var remainingCompactions = 0.
+	// Metrics for the remaining planned compactions, per time range. Every configured range
+	// is reported so one with nothing left reads zero instead of holding its last value.
+	remainingCompactions := make(map[int64]float64)
+	for _, timeRange := range g.compactorCfg.BlockRanges.ToMilliseconds() {
+		remainingCompactions[timeRange] = 0
+	}
 	defer func() {
-		g.compactorMetrics.remainingPlannedCompactions.WithLabelValues(g.userID).Set(remainingCompactions)
+		for timeRange, count := range remainingCompactions {
+			g.compactorMetrics.remainingPlannedCompactions.WithLabelValues(g.userID, timeRangeLabelValue(timeRange)).Set(count)
+		}
 	}()
 
 	var groups []blocksGroup
@@ -197,7 +203,7 @@ mainLoop:
 			continue
 		}
 
-		remainingCompactions++
+		remainingCompactions[group.rangeEnd-group.rangeStart]++
 		groupKey := createGroupKey(groupHash, group)
 
 		level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "group", group.String())

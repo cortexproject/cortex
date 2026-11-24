@@ -85,6 +85,7 @@ type BlocksCleaner struct {
 	remainingPlannedCompactions       *prometheus.GaugeVec
 	inProgressCompactions             *prometheus.GaugeVec
 	oldestPartitionGroupOffset        *prometheus.GaugeVec
+	oldestLevel1BlockOffset           *prometheus.GaugeVec
 	enqueueJobFailed                  *prometheus.CounterVec
 }
 
@@ -112,8 +113,8 @@ func NewBlocksCleaner(
 		}, commonLabels)
 		oldestPartitionGroupOffset = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_compactor_oldest_partition_offset",
-			Help: "Time in seconds between now and the oldest created partition group not completed. Only available with shuffle-sharding strategy and partitioning compaction strategy",
-		}, commonLabels)
+			Help: "Time in seconds between now and the oldest created partition group not completed, per compaction time range. Only available with shuffle-sharding strategy and partitioning compaction strategy",
+		}, append(commonLabels, compactionLabels...))
 	}
 
 	c := &BlocksCleaner{
@@ -194,6 +195,10 @@ func NewBlocksCleaner(
 		remainingPlannedCompactions: remainingPlannedCompactions,
 		inProgressCompactions:       inProgressCompactions,
 		oldestPartitionGroupOffset:  oldestPartitionGroupOffset,
+		oldestLevel1BlockOffset: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_compactor_oldest_level_1_block_offset_seconds",
+			Help: "Time in seconds between now and the upload time of the oldest level 1 block still listed in the tenant's bucket index, excluding blocks marked for deletion. 0 when the tenant has no such block.",
+		}, commonLabels),
 		enqueueJobFailed: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_compactor_enqueue_cleaner_job_failed_total",
 			Help: "Total number of cleaner jobs failed to be enqueued.",
@@ -457,11 +462,13 @@ func (c *BlocksCleaner) deleteUserMetrics(userID string) {
 	c.tenantBlocksMarkedForNoCompaction.DeleteLabelValues(userID)
 	c.tenantPartialBlocks.DeleteLabelValues(userID)
 	c.tenantBucketIndexLastUpdate.DeleteLabelValues(userID)
+	c.oldestLevel1BlockOffset.DeleteLabelValues(userID)
 	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		c.remainingPlannedCompactions.DeleteLabelValues(userID)
+		// Both vecs carry a time range label, so the user has to be matched on its own.
+		c.remainingPlannedCompactions.DeletePartialMatch(prometheus.Labels{userLabelName: userID})
 		if c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
 			c.inProgressCompactions.DeleteLabelValues(userID)
-			c.oldestPartitionGroupOffset.DeleteLabelValues(userID)
+			c.oldestPartitionGroupOffset.DeletePartialMatch(prometheus.Labels{userLabelName: userID})
 		}
 	}
 }
@@ -716,7 +723,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		w.EnableParquet()
 	}
 
-	idx, partials, totalBlocksBlocksMarkedForNoCompaction, err := w.UpdateIndex(ctx, idx)
+	idx, partials, blocksMarkedForNoCompaction, err := w.UpdateIndex(ctx, idx)
 	if err != nil {
 		idxs.Status = bucketindex.GenericError
 		return err
@@ -781,16 +788,17 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		}
 		level.Info(userLogger).Log("msg", "finish writing new index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
-	c.updateBucketMetrics(userID, parquetEnabled, idx, float64(len(partials)), float64(totalBlocksBlocksMarkedForNoCompaction))
+	c.updateBucketMetrics(userID, parquetEnabled, idx, float64(len(partials)), blocksMarkedForNoCompaction)
 	return nil
 }
 
-func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, idx *bucketindex.Index, partials, totalBlocksBlocksMarkedForNoCompaction float64) {
+func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, idx *bucketindex.Index, partials float64, blocksMarkedForNoCompaction map[ulid.ULID]struct{}) {
 	c.tenantBlocks.WithLabelValues(userID).Set(float64(len(idx.Blocks)))
 	c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(len(idx.BlockDeletionMarks)))
-	c.tenantBlocksMarkedForNoCompaction.WithLabelValues(userID).Set(totalBlocksBlocksMarkedForNoCompaction)
+	c.tenantBlocksMarkedForNoCompaction.WithLabelValues(userID).Set(float64(len(blocksMarkedForNoCompaction)))
 	c.tenantPartialBlocks.WithLabelValues(userID).Set(float64(partials))
 	c.tenantBucketIndexLastUpdate.WithLabelValues(userID).SetToCurrentTime()
+	c.oldestLevel1BlockOffset.WithLabelValues(userID).Set(oldestLevel1BlockOffsetSeconds(idx, blocksMarkedForNoCompaction, time.Now()))
 	if parquetEnabled {
 		c.tenantParquetBlocks.WithLabelValues(userID).Set(float64(len(idx.ParquetBlocks())))
 		remainingBlocksToConvert := 0
@@ -801,6 +809,40 @@ func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, 
 		}
 		c.tenantParquetUnConvertedBlocks.WithLabelValues(userID).Set(float64(remainingBlocksToConvert))
 	}
+}
+
+// oldestLevel1BlockOffsetSeconds returns how long ago the oldest level 1 block still listed
+// in the bucket index was uploaded, or 0 if there is none. A block marked for deletion has
+// already been compacted and one marked for no compaction never will be, so neither says
+// anything about whether compaction is keeping up. Upload time is used rather than the
+// block's own time range so that late or backfilled samples do not read as a backlog. An
+// entry written before the index carried a compaction level reports 0 and is skipped.
+func oldestLevel1BlockOffsetSeconds(idx *bucketindex.Index, blocksMarkedForNoCompaction map[ulid.ULID]struct{}, now time.Time) float64 {
+	markedForDeletion := make(map[ulid.ULID]struct{}, len(idx.BlockDeletionMarks))
+	for _, mark := range idx.BlockDeletionMarks {
+		markedForDeletion[mark.ID] = struct{}{}
+	}
+
+	oldestUploadedAt := int64(0)
+	for _, b := range idx.Blocks {
+		if b.CompactionLevel != 1 {
+			continue
+		}
+		if _, deleted := markedForDeletion[b.ID]; deleted {
+			continue
+		}
+		if _, noCompact := blocksMarkedForNoCompaction[b.ID]; noCompact {
+			continue
+		}
+		if oldestUploadedAt == 0 || b.UploadedAt < oldestUploadedAt {
+			oldestUploadedAt = b.UploadedAt
+		}
+	}
+
+	if oldestUploadedAt == 0 {
+		return 0
+	}
+	return float64(now.Unix() - oldestUploadedAt)
 }
 
 func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, userID string) {
@@ -883,24 +925,36 @@ func (c *BlocksCleaner) emitUserPartitionMetrics(ctx context.Context, userLogger
 		return
 	}
 
-	remainingCompactions := 0
+	// Every configured range is reported so one with nothing outstanding reads zero instead
+	// of holding its last value.
+	remainingCompactions := make(map[int64]int)
+	oldestPartitionGroup := make(map[int64]*PartitionedGroupInfo)
+	for _, timeRange := range c.cfg.BlockRanges {
+		remainingCompactions[timeRange] = 0
+		oldestPartitionGroup[timeRange] = nil
+	}
 	inProgressCompactions := 0
-	var oldestPartitionGroup *PartitionedGroupInfo
 	defer func() {
-		c.remainingPlannedCompactions.WithLabelValues(userID).Set(float64(remainingCompactions))
 		c.inProgressCompactions.WithLabelValues(userID).Set(float64(inProgressCompactions))
-		if oldestPartitionGroup != nil {
-			c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(float64(time.Now().Unix() - oldestPartitionGroup.CreationTime))
-			level.Debug(userLogger).Log("msg", "partition group info with oldest creation time", "partitioned_group_id", oldestPartitionGroup.PartitionedGroupID, "creation_time", oldestPartitionGroup.CreationTimeString())
-		} else {
-			c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(0)
+		for timeRange, count := range remainingCompactions {
+			c.remainingPlannedCompactions.WithLabelValues(userID, timeRangeLabelValue(timeRange)).Set(float64(count))
+		}
+		for timeRange, group := range oldestPartitionGroup {
+			timeRangeLabel := timeRangeLabelValue(timeRange)
+			if group == nil {
+				c.oldestPartitionGroupOffset.WithLabelValues(userID, timeRangeLabel).Set(0)
+				continue
+			}
+			c.oldestPartitionGroupOffset.WithLabelValues(userID, timeRangeLabel).Set(float64(time.Now().Unix() - group.CreationTime))
+			level.Debug(userLogger).Log("msg", "partition group info with oldest creation time", "time_range", timeRange, "partitioned_group_id", group.PartitionedGroupID, "creation_time", group.CreationTimeString())
 		}
 	}()
 	for partitionedGroupInfo, extraInfo := range existentPartitionedGroupInfo {
-		remainingCompactions += extraInfo.status.PendingPartitions
+		timeRange := partitionedGroupInfo.RangeEnd - partitionedGroupInfo.RangeStart
+		remainingCompactions[timeRange] += extraInfo.status.PendingPartitions
 		inProgressCompactions += extraInfo.status.InProgressPartitions
-		if oldestPartitionGroup == nil || partitionedGroupInfo.CreationTime < oldestPartitionGroup.CreationTime {
-			oldestPartitionGroup = partitionedGroupInfo
+		if oldest := oldestPartitionGroup[timeRange]; oldest == nil || partitionedGroupInfo.CreationTime < oldest.CreationTime {
+			oldestPartitionGroup[timeRange] = partitionedGroupInfo
 		}
 	}
 }

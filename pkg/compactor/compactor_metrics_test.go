@@ -115,7 +115,7 @@ func TestCompactorMetrics(t *testing.T) {
 			cortex_compactor_group_vertical_compactions_total{user="aaa"} 344410
 			cortex_compactor_group_vertical_compactions_total{user="bbb"} 355520
 			cortex_compactor_group_vertical_compactions_total{user="ccc"} 366630
-			# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
+			# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted, per compaction time range. Only available with shuffle-sharding strategy
 			# TYPE cortex_compactor_remaining_planned_compactions gauge
 			cortex_compactor_remaining_planned_compactions{user="aaa"} 377740
 			cortex_compactor_remaining_planned_compactions{user="bbb"} 388850

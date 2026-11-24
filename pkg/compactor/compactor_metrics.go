@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -60,6 +61,11 @@ var (
 	commonLabels     = []string{userLabelName}
 	compactionLabels = []string{timeRangeLabelName}
 )
+
+// timeRangeLabelValue renders a compaction time range in milliseconds as a label value.
+func timeRangeLabelValue(timeRangeMillis int64) string {
+	return strconv.FormatInt(timeRangeMillis, 10)
+}
 
 func newDefaultCompactorMetrics(reg prometheus.Registerer) *compactorMetrics {
 	return newCompactorMetricsWithLabels(reg, commonLabels, []string{"resolution"})
@@ -169,8 +175,8 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 	}, compactionLabels)
 	m.remainingPlannedCompactions = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 		Name: "cortex_compactor_remaining_planned_compactions",
-		Help: "Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy",
-	}, commonLabels)
+		Help: "Total number of plans that remain to be compacted, per compaction time range. Only available with shuffle-sharding strategy",
+	}, compactionLabels)
 	m.compactionErrorsCount = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_compactor_compaction_error_total",
 		Help: "Total number of errors from compactions.",

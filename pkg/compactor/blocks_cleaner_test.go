@@ -1202,6 +1202,10 @@ func TestBlocksCleaner_ParquetMetrics(t *testing.T) {
 
 	// Create test blocks in the index
 	now := time.Now()
+	recent2hBlockEnd := now.Truncate(2 * time.Hour)
+	old2hBlockEnd := recent2hBlockEnd.Add(-24 * time.Hour)
+	recentMarkedBlock := ulid.MustNew(ulid.Now(), rand.Reader)
+	oldMarkedBlock := ulid.MustNew(ulid.Now(), rand.Reader)
 	idx := &bucketindex.Index{
 		Blocks: bucketindex.Blocks{
 			{
@@ -1225,20 +1229,33 @@ func TestBlocksCleaner_ParquetMetrics(t *testing.T) {
 			// A recent 2h block with a no-compact mark is too young to have
 			// its marker checked, so it is not counted as unconverted.
 			{
+				ID:      recentMarkedBlock,
+				MinTime: recent2hBlockEnd.Add(-2 * time.Hour).UnixMilli(),
+				MaxTime: recent2hBlockEnd.UnixMilli(),
+				Parquet: nil,
+			},
+			// An old 2h block with a no-compact mark is counted as unconverted.
+			{
+				ID:      oldMarkedBlock,
+				MinTime: old2hBlockEnd.Add(-2 * time.Hour).UnixMilli(),
+				MaxTime: old2hBlockEnd.UnixMilli(),
+				Parquet: nil,
+			},
+			// An old 2h block without a no-compact mark is not counted.
+			{
 				ID:      ulid.MustNew(ulid.Now(), rand.Reader),
-				MinTime: now.Truncate(2 * time.Hour).Add(-2 * time.Hour).UnixMilli(),
-				MaxTime: now.Truncate(2 * time.Hour).UnixMilli(),
+				MinTime: old2hBlockEnd.Add(-2 * time.Hour).UnixMilli(),
+				MaxTime: old2hBlockEnd.UnixMilli(),
 				Parquet: nil,
 			},
 		},
 	}
 
-	mockNoCompactMarkCheckFunc := func(blockID ulid.ULID) bool {
-		return true
-	}
-
 	// Update metrics
-	cleaner.updateBucketMetrics("user1", true, idx, 0, nil, mockNoCompactMarkCheckFunc)
+	cleaner.updateBucketMetrics("user1", true, idx, 0, map[ulid.ULID]struct{}{
+		recentMarkedBlock: {},
+		oldMarkedBlock:    {},
+	})
 
 	// Verify metrics
 	require.NoError(t, prom_testutil.CollectAndCompare(cleaner.tenantParquetBlocks, strings.NewReader(`
@@ -1250,7 +1267,7 @@ func TestBlocksCleaner_ParquetMetrics(t *testing.T) {
 	require.NoError(t, prom_testutil.CollectAndCompare(cleaner.tenantParquetUnConvertedBlocks, strings.NewReader(`
 		# HELP cortex_bucket_parquet_unconverted_blocks_count Total number of unconverted parquet blocks in the bucket. Blocks marked for deletion are included.
 		# TYPE cortex_bucket_parquet_unconverted_blocks_count gauge
-		cortex_bucket_parquet_unconverted_blocks_count{user="user1"} 2
+		cortex_bucket_parquet_unconverted_blocks_count{user="user1"} 3
 	`)))
 }
 

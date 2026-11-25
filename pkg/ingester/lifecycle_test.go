@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,6 +118,39 @@ func TestIngester_ShutdownHandler(t *testing.T) {
 			test.Poll(t, 100*time.Millisecond, 0, func() any {
 				return numTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", RingKey)
 			})
+		})
+	}
+}
+
+func TestIngester_RenewTokenHandler(t *testing.T) {
+	tests := map[string]struct {
+		form           url.Values
+		expectedStatus int
+	}{
+		"no ring members":               {expectedStatus: http.StatusNoContent},
+		"ring members including itself": {form: url.Values{"ingesters": {"localhost", "other"}}, expectedStatus: http.StatusNoContent},
+		"ring members without itself":   {form: url.Values{"ingesters": {"other"}}, expectedStatus: http.StatusBadRequest},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			config := defaultIngesterTestConfig(t)
+			ingester, err := prepareIngesterWithBlocksStorage(t, config, prometheus.NewRegistry())
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingester))
+			t.Cleanup(func() { _ = services.StopAndAwaitTerminated(context.Background(), ingester) })
+
+			// Make sure the ingester has been added to the ring.
+			test.Poll(t, 100*time.Millisecond, 1, func() any {
+				return numTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", RingKey)
+			})
+
+			req := httptest.NewRequest(http.MethodPost, "/ingester/renewTokens", strings.NewReader(tc.form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			recorder := httptest.NewRecorder()
+			ingester.RenewTokenHandler(recorder, req)
+
+			require.Equal(t, tc.expectedStatus, recorder.Result().StatusCode)
 		})
 	}
 }

@@ -274,6 +274,87 @@ func TestMinimizeSpreadTokenGenerator_IgnoresReadOnlyIngesters(t *testing.T) {
 	require.Less(t, maxWriteOwnershipError(ringDesc), 0.02)
 }
 
+func TestMinimizeSpreadTokenGenerator_BalancesAgainstRingMembers(t *testing.T) {
+	const (
+		zone              = "zone1"
+		numMembers        = 20
+		numLeaving        = 10
+		tokensPerIngester = 128
+		tokensToRenew     = tokensPerIngester / 10
+	)
+
+	rnd := rand.New(rand.NewSource(1))
+	seeded := &seededTokenGenerator{rnd: rnd}
+	generator := &MinimizeSpreadTokenGenerator{innerGenerator: seeded}
+	registeredAt := time.Unix(1700000000, 0)
+
+	// Every ingester is ACTIVE, but only the first numMembers will remain after a scale down.
+	ringDesc := NewDesc()
+	var members []string
+	for i := range numMembers + numLeaving {
+		id := fmt.Sprintf("ingester-%02d", i)
+		if i < numMembers {
+			members = append(members, id)
+		}
+		ringDesc.AddIngester(id, id, zone, seeded.GenerateTokens(ringDesc, id, zone, tokensPerIngester, true), ACTIVE, registeredAt)
+	}
+
+	leavingTokensBefore := map[string][]uint32{}
+	for id, ing := range ringDesc.Ingesters {
+		if !slices.Contains(members, id) {
+			leavingTokensBefore[id] = slices.Clone(ing.Tokens)
+		}
+	}
+
+	// The remaining ring must start unbalanced, or the assertion below proves nothing.
+	require.Greater(t, maxWriteOwnershipError(ringWithOnlyMembersWritable(ringDesc, members)), 0.05)
+
+	// Renew 10% of each member's tokens against the members only, the same way Lifecycler.RenewTokens does.
+	for _, id := range members {
+		ing := ringDesc.Ingesters[id]
+
+		kept := slices.Clone(ing.Tokens)
+		for range tokensToRenew {
+			idx := rnd.Intn(len(kept))
+			kept = append(kept[:idx], kept[idx+1:]...)
+		}
+		ringDesc.AddIngester(id, id, zone, kept, ACTIVE, registeredAt)
+
+		newTokens := generator.GenerateTokens(ringWithOnlyMembersWritable(ringDesc, members), id, zone, tokensToRenew, true)
+		require.Len(t, newTokens, tokensToRenew)
+
+		tokens := append(kept, newTokens...)
+		slices.Sort(tokens)
+		require.Len(t, slices.Compact(slices.Clone(tokens)), tokensPerIngester, "duplicated tokens for %s", id)
+		ringDesc.AddIngester(id, id, zone, tokens, ACTIVE, registeredAt)
+	}
+
+	// The leaving ingesters keep their tokens and state, and no token is shared between ingesters.
+	for id, tokens := range leavingTokensBefore {
+		require.Equal(t, tokens, ringDesc.Ingesters[id].Tokens)
+		require.Equal(t, ACTIVE, ringDesc.Ingesters[id].State)
+	}
+	allTokens := ringDesc.GetTokens()
+	require.Len(t, slices.Compact(slices.Clone(allTokens)), len(allTokens))
+
+	// Once the leaving ingesters are gone, the members' ownership must be balanced.
+	require.Less(t, maxWriteOwnershipError(ringWithOnlyMembersWritable(ringDesc, members)), 0.02)
+}
+
+func TestRingWithOnlyMembersWritable(t *testing.T) {
+	ringDesc := NewDesc()
+	ringDesc.AddIngester("ing1", "ing1", "zone1", []uint32{1}, ACTIVE, time.Now())
+	ringDesc.AddIngester("ing2", "ing2", "zone1", []uint32{2}, ACTIVE, time.Now())
+
+	require.Same(t, ringDesc, ringWithOnlyMembersWritable(ringDesc, nil))
+
+	view := ringWithOnlyMembersWritable(ringDesc, []string{"ing1"})
+	require.Equal(t, ACTIVE, view.Ingesters["ing1"].State)
+	require.Equal(t, READONLY, view.Ingesters["ing2"].State)
+	require.Equal(t, []uint32{2}, view.Ingesters["ing2"].Tokens)
+	require.Equal(t, ACTIVE, ringDesc.Ingesters["ing2"].State, "the ring itself is not changed")
+}
+
 // maxWriteOwnershipError returns the largest relative difference between an ACTIVE ingester's write
 // ownership and its expected share. Write ownership is computed from ACTIVE tokens only, because a
 // READONLY ingester's ranges are written to the next ACTIVE ingester on the ring.

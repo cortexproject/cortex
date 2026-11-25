@@ -1315,8 +1315,26 @@ func (i *Ingester) updateLabelSetMetrics() {
 	i.validateMetrics.UpdateLabelSet(activeUserSet, i.logger)
 }
 
+// RenewTokenHandler renews 10% of the ingester's tokens.
+//
+// Optional repeated "ingesters" form values list the ring members to balance
+// the new tokens against, as if every other ingester were already gone. The
+// list must include this ingester.
 func (i *Ingester) RenewTokenHandler(w http.ResponseWriter, r *http.Request) {
-	i.lifecycler.RenewTokens(0.1, r.Context())
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ringMembers := r.Form["ingesters"]
+	if len(ringMembers) > 0 && !slices.Contains(ringMembers, i.lifecycler.ID) {
+		http.Error(w, fmt.Sprintf("ingesters must include this ingester (%s)", i.lifecycler.ID), http.StatusBadRequest)
+		return
+	}
+
+	if err := i.lifecycler.RenewTokens(r.Context(), 0.1, ringMembers); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

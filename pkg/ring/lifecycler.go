@@ -859,20 +859,31 @@ func (i *Lifecycler) initRing(ctx context.Context) (bool, error) {
 	return addedInRing, err
 }
 
-func (i *Lifecycler) RenewTokens(ratio float64, ctx context.Context) {
+// RenewTokens replaces the given ratio of the instance's tokens with newly
+// generated ones.
+//
+// If ringMembers is not empty, the new tokens are generated as if only those
+// instances took writes: every other instance is treated like a READONLY one,
+// so its token ranges are not balanced against but its tokens are still not
+// reused. This lets an instance rebalance ahead of a scale down, against the
+// ring that will remain once the other instances are gone. ringMembers must
+// include the instance itself.
+func (i *Lifecycler) RenewTokens(ctx context.Context, ratio float64, ringMembers []string) error {
 	if ratio > 1 {
 		ratio = 1
 	}
+	if len(ringMembers) > 0 && !slices.Contains(ringMembers, i.ID) {
+		return fmt.Errorf("ring members must include the instance %s", i.ID)
+	}
+
 	err := i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
-			return in, false, nil
+			return nil, false, errors.New("ring is empty")
 		}
 
 		ringDesc := in.(*Desc)
-		_, ok := ringDesc.Ingesters[i.ID]
-
-		if !ok {
-			return in, false, nil
+		if _, ok := ringDesc.Ingesters[i.ID]; !ok {
+			return nil, false, fmt.Errorf("instance %s is not in the ring", i.ID)
 		}
 
 		tokensToBeRenewed := int(float64(i.cfg.NumTokens) * ratio)
@@ -888,9 +899,9 @@ func (i *Lifecycler) RenewTokens(ratio float64, ctx context.Context) {
 		}
 
 		needTokens := i.cfg.NumTokens - len(ringTokens)
-		level.Info(i.logger).Log("msg", "renewing new tokens", "count", needTokens, "ring", i.RingName)
+		level.Info(i.logger).Log("msg", "renewing new tokens", "count", needTokens, "ring", i.RingName, "ring_members", len(ringMembers))
 		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, ringTokens, i.GetState(), i.getRegisteredAt())
-		newTokens := i.tg.GenerateTokens(ringDesc, i.ID, i.Zone, needTokens, true)
+		newTokens := i.tg.GenerateTokens(ringWithOnlyMembersWritable(ringDesc, ringMembers), i.ID, i.Zone, needTokens, true)
 
 		ringTokens = append(ringTokens, newTokens...)
 		sort.Sort(ringTokens)
@@ -902,7 +913,28 @@ func (i *Lifecycler) RenewTokens(ratio float64, ctx context.Context) {
 
 	if err != nil {
 		level.Error(i.logger).Log("msg", "failed to regenerate tokens", "ring", i.RingName, "err", err)
+		return err
 	}
+	return nil
+}
+
+// ringWithOnlyMembersWritable returns ringDesc unchanged when members is empty.
+// Otherwise it returns a copy in which every instance not in members is
+// READONLY, which the token generators skip when balancing ownership but whose
+// tokens they still avoid.
+func ringWithOnlyMembersWritable(ringDesc *Desc, members []string) *Desc {
+	if len(members) == 0 {
+		return ringDesc
+	}
+
+	view := &Desc{Ingesters: make(map[string]InstanceDesc, len(ringDesc.Ingesters))}
+	for id, instance := range ringDesc.Ingesters {
+		if !slices.Contains(members, id) {
+			instance.State = READONLY
+		}
+		view.Ingesters[id] = instance
+	}
+	return view
 }
 
 // Verifies that tokens that this ingester has registered to the ring still belong to it.

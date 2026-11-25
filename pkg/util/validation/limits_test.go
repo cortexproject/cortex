@@ -235,6 +235,31 @@ func TestOverrides_MaxChunksPerQueryFromStore(t *testing.T) {
 	assert.Equal(t, 2000000, overrides.MaxChunksPerQueryFromStore("test"))
 }
 
+func TestOverrides_EnableNativeHistograms(t *testing.T) {
+	defaults := Limits{}
+	flagext.DefaultValues(&defaults)
+	SetDefaultLimitsForYAMLUnmarshalling(defaults)
+
+	var yamlUnset, yamlDisabled, jsonUnset, jsonDisabled Limits
+	require.NoError(t, yaml.UnmarshalStrict([]byte(`ingestion_rate: 1`), &yamlUnset))
+	require.NoError(t, yaml.UnmarshalStrict([]byte(`enable_native_histograms: false`), &yamlDisabled))
+	require.NoError(t, json.Unmarshal([]byte(`{"ingestion_rate": 1}`), &jsonUnset))
+	require.NoError(t, json.Unmarshal([]byte(`{"enable_native_histograms": false}`), &jsonDisabled))
+
+	overrides := NewOverrides(defaults, newMockTenantLimits(map[string]*Limits{
+		"yaml-unset":    &yamlUnset,
+		"yaml-disabled": &yamlDisabled,
+		"json-unset":    &jsonUnset,
+		"json-disabled": &jsonDisabled,
+	}))
+
+	assert.True(t, overrides.EnableNativeHistograms("no-override"))
+	assert.True(t, overrides.EnableNativeHistograms("yaml-unset"))
+	assert.False(t, overrides.EnableNativeHistograms("yaml-disabled"))
+	assert.True(t, overrides.EnableNativeHistograms("json-unset"))
+	assert.False(t, overrides.EnableNativeHistograms("json-disabled"))
+}
+
 func TestOverridesManager_GetOverrides(t *testing.T) {
 	tenantLimits := map[string]*Limits{}
 

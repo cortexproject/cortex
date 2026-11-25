@@ -5739,8 +5739,8 @@
           "x-cli-flag": "distributor.drop-label"
         },
         "enable_native_histograms": {
-          "default": false,
-          "description": "True to enable native histogram.",
+          "default": true,
+          "description": "Enable ingestion of native histogram samples. When disabled, native histogram samples are discarded.",
           "type": "boolean",
           "x-cli-flag": "blocks-storage.tsdb.enable-native-histograms"
         },

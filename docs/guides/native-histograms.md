@@ -21,6 +21,7 @@ And via yaml:
 limits:
   enable_native_histograms: <bool>
 ```
+<!-- TODO: Update this guide when v1.23.0 is released: native histogram ingestion is enabled by default, document how to disable it and the recommended limits. -->
 By default, it is disabled, so make sure to enable it if you need native histograms for your system monitoring.
 
 When a `write request` contains both `samples` and `native histogram`, the ingestion behavior is as follows:

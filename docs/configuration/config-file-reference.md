@@ -4682,9 +4682,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # series matching its matchers and exposes the count as a metric.
 [active_series_trackers: <list of ActiveSeriesTrackerConfig> | default = []]
 
-# True to enable native histogram.
+# Enable ingestion of native histogram samples. When disabled, native histogram
+# samples are discarded.
 # CLI flag: -blocks-storage.tsdb.enable-native-histograms
-[enable_native_histograms: <boolean> | default = false]
+[enable_native_histograms: <boolean> | default = true]
 
 # Maximum length (in bytes) of an unoptimized regex pattern. This is a
 # pre-flight check to reject expensive regex queries. 0 to disable. This is only

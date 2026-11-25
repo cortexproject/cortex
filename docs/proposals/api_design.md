@@ -16,7 +16,7 @@ The purpose of this design document is to propose a set of standards that should
 
 ## Current Design
 
-As things currently stand, the majority of HTTP API calls exist under the `/api/prom` path prefix. This prefix is configurable. However, since this prefix is shared between all the modules which leads to conflicts if the Alertmanager is attempted to be run as as part of the single binary (#1722).
+As things currently stand, the majority of HTTP API calls exist under the `/api/prom` path prefix. This prefix is configurable. However, since this prefix is shared between all the modules which leads to conflicts if the Alertmanager is attempted to be run as part of the single binary (#1722).
 
 ## Proposed Design
 

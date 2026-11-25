@@ -77,7 +77,7 @@ func NewPostingCacheMetrics(r prometheus.Registerer) *ExpandedPostingsCacheMetri
 }
 
 type TSDBPostingsCacheConfig struct {
-	Head   PostingsCacheConfig `yaml:"head" doc:"description=If enabled, ingesters will cache expanded postings for the head block. Only queries with with an equal matcher for metric __name__ are cached."`
+	Head   PostingsCacheConfig `yaml:"head" doc:"description=If enabled, ingesters will cache expanded postings for the head block. Only queries with an equal matcher for metric __name__ are cached."`
 	Blocks PostingsCacheConfig `yaml:"blocks" doc:"description=If enabled, ingesters will cache expanded postings for the compacted blocks. The cache is shared between all blocks."`
 
 	// LazyMatcherMaxCardinality configures the maximum label cardinality threshold for

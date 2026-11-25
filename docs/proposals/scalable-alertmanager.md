@@ -75,4 +75,4 @@ Under the assumption we implement the options proposed above, our architecture l
 
 **GET /api/v1/alerts and /api/v1/alerts/group** uses the ring to find the right alertmanager replicas for the given tenant. They read from a quorum of alertmanager replicas and return an union of the results.
 
-**Alertmanager state is replicated between instances to keep them in sync**. Where the state is replicated to to is controlled by the ring.
+**Alertmanager state is replicated between instances to keep them in sync**. Where the state is replicated to is controlled by the ring.

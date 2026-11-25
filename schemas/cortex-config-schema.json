@@ -3530,7 +3530,7 @@
                   "type": "object"
                 },
                 "head": {
-                  "description": "If enabled, ingesters will cache expanded postings for the head block. Only queries with with an equal matcher for metric __name__ are cached.",
+                  "description": "If enabled, ingesters will cache expanded postings for the head block. Only queries with an equal matcher for metric __name__ are cached.",
                   "properties": {
                     "enabled": {
                       "default": false,

@@ -55,6 +55,7 @@ Currently experimental features are:
   - Accept multiple HA pairs in the same request (enabled via `-experimental.distributor.ha-tracker.mixed-ha-samples=true`)
   - Accept Prometheus remote write 2.0 request (`-distributor.remote-writev2-enabled=true`)
   - Use a goroutine worker pool for query fan-out calls to ingesters (`-distributor.num-query-workers`)
+  - Per-client (`X-Scope-ClientID`) ingestion rate limiting (`-distributor.client-identity-ingestion-rate-limit`, see [Client-Identity Rate Limiting](../guides/client-identity-rate-limiting.md))
 - Tenant Deletion in Purger, for blocks storage.
 - Blocks storage user index
 - Store Gateway max concurrent fetched data bytes limit

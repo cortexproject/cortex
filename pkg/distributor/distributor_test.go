@@ -48,6 +48,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/clientid"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -5021,4 +5022,107 @@ func TestDistributor_ReceivedHistogramBucketsMetric(t *testing.T) {
 	require.Equal(t, uint64(1), m.GetHistogram().GetSampleCount())
 	// GenerateTestHistogram(0): 4 positive + 4 negative + 1 zero = 9 buckets
 	require.Equal(t, float64(9), m.GetHistogram().GetSampleSum())
+}
+
+func TestDistributor_PushClientIdentityRateLimiter(t *testing.T) {
+	t.Parallel()
+
+	const tenant = "user"
+
+	// Capacity per window is limit*window+burst = 10 samples. Every case
+	// pushes exactly one request per (distributor, client) so the outcome never
+	// depends on which fixed window the push lands in.
+	tests := map[string]struct {
+		clientRateLimit float64
+		clientID        string
+		samples         int
+		expectedError   error
+	}{
+		"feature disabled (limit 0): header present, no check": {
+			clientRateLimit: 0,
+			clientID:        "client-a",
+			samples:         50,
+		},
+		"feature enabled but no X-Scope-ClientID: no check": {
+			clientRateLimit: 10,
+			clientID:        "",
+			samples:         50,
+		},
+		"feature enabled, within client limit": {
+			clientRateLimit: 10,
+			clientID:        "client-a",
+			samples:         10,
+		},
+		"feature enabled, over client limit": {
+			clientRateLimit: 10,
+			clientID:        "client-a",
+			samples:         11,
+			expectedError:   httpgrpc.Errorf(http.StatusTooManyRequests, `client identity rate limit (10) exceeded for client "client-a" while adding 11 samples and 0 metadata`),
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.ClientIdentityIngestionRateLimit = tc.clientRateLimit
+
+			distributors, _, _, _ := prepare(t, prepConfig{
+				numIngesters:     3,
+				happyIngesters:   3,
+				numDistributors:  1,
+				shardByAllLabels: true,
+				limits:           limits,
+			})
+
+			ctx := clientid.InjectIntoContext(user.InjectOrgID(context.Background(), tenant), tc.clientID)
+			response, err := distributors[0].Push(ctx, makeWriteRequest(0, tc.samples, 0, 0))
+
+			if tc.expectedError == nil {
+				require.NoError(t, err)
+				assert.Equal(t, emptyResponse, response)
+				assert.Equal(t, float64(0), testutil.ToFloat64(distributors[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.ClientIdentityRateLimited, tenant)))
+				return
+			}
+
+			assert.Nil(t, response)
+			assert.Equal(t, tc.expectedError, err)
+			assert.Equal(t, float64(tc.samples), testutil.ToFloat64(distributors[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.ClientIdentityRateLimited, tenant)))
+		})
+	}
+}
+
+func TestDistributor_PushClientIdentityRateLimiter_ClientsAreIndependentAndTenantLimitStillApplies(t *testing.T) {
+	t.Parallel()
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.ClientIdentityIngestionRateLimit = 10
+	limits.IngestionRateStrategy = validation.LocalIngestionRateStrategy
+	limits.IngestionRate = 15 // tenant-level ceiling, above one client's budget but below two.
+	limits.IngestionBurstSize = 15
+
+	distributors, _, _, _ := prepare(t, prepConfig{
+		numIngesters:     3,
+		happyIngesters:   3,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           limits,
+	})
+
+	base := user.InjectOrgID(context.Background(), "user")
+
+	// Client A exhausts nothing but a single request's worth of its own budget.
+	_, err := distributors[0].Push(clientid.InjectIntoContext(base, "client-a"), makeWriteRequest(0, 10, 0, 0))
+	require.NoError(t, err)
+
+	// The tenant-level limiter still runs first and remains the hard ceiling
+	// for the tenant as a whole: another client within its own budget is still
+	// rejected once the tenant's aggregate budget is gone.
+	_, err = distributors[0].Push(clientid.InjectIntoContext(base, "client-b"), makeWriteRequest(0, 10, 0, 0))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ingestion rate limit (15) exceeded")
+	assert.NotContains(t, err.Error(), "client identity")
 }

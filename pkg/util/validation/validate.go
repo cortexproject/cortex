@@ -67,6 +67,12 @@ const (
 	RateLimited                = "rate_limited"
 	NativeHistogramRateLimited = "native_histogram_rate_limited"
 
+	// ClientIdentityRateLimited is used when a request is rejected by the
+	// per-(tenant, X-Scope-ClientID) ingestion rate limit, additional to and
+	// independent of RateLimited above. See
+	// docs/proposals/client-identity-ingestion-rate-limiting.md.
+	ClientIdentityRateLimited = "client_rate_limited"
+
 	// Too many HA clusters is one of the reasons for discarding samples.
 	TooManyHAClusters = "too_many_ha_clusters"
 

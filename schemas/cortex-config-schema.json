@@ -4267,6 +4267,106 @@
           "type": "boolean",
           "x-cli-flag": "distributor.accept-unknown-remote-write-content-type"
         },
+        "client_rate_limit_kvstore": {
+          "properties": {
+            "consul": {
+              "$ref": "#/definitions/consul_config"
+            },
+            "dynamodb": {
+              "properties": {
+                "max_cas_retries": {
+                  "default": 10,
+                  "description": "Maximum number of retries for DDB KV CAS.",
+                  "type": "number",
+                  "x-cli-flag": "distributor.client-identity-rate-limit.dynamodb.max-cas-retries"
+                },
+                "puller_sync_time": {
+                  "default": "1m0s",
+                  "description": "Time to refresh local ring with information on dynamodb.",
+                  "type": "string",
+                  "x-cli-flag": "distributor.client-identity-rate-limit.dynamodb.puller-sync-time",
+                  "x-format": "duration"
+                },
+                "region": {
+                  "description": "Region to access dynamodb.",
+                  "type": "string",
+                  "x-cli-flag": "distributor.client-identity-rate-limit.dynamodb.region"
+                },
+                "table_name": {
+                  "description": "Table name to use on dynamodb.",
+                  "type": "string",
+                  "x-cli-flag": "distributor.client-identity-rate-limit.dynamodb.table-name"
+                },
+                "timeout": {
+                  "default": "2m0s",
+                  "description": "Timeout of dynamoDbClient requests. Default is 2m.",
+                  "type": "string",
+                  "x-cli-flag": "distributor.client-identity-rate-limit.dynamodb.timeout",
+                  "x-format": "duration"
+                },
+                "ttl": {
+                  "default": "0s",
+                  "description": "Time to expire items on dynamodb.",
+                  "type": "string",
+                  "x-cli-flag": "distributor.client-identity-rate-limit.dynamodb.ttl-time",
+                  "x-format": "duration"
+                }
+              },
+              "type": "object"
+            },
+            "etcd": {
+              "$ref": "#/definitions/etcd_config"
+            },
+            "multi": {
+              "properties": {
+                "mirror_enabled": {
+                  "default": false,
+                  "description": "Mirror writes to secondary store.",
+                  "type": "boolean",
+                  "x-cli-flag": "distributor.client-identity-rate-limit.multi.mirror-enabled"
+                },
+                "mirror_timeout": {
+                  "default": "2s",
+                  "description": "Timeout for storing value to secondary store.",
+                  "type": "string",
+                  "x-cli-flag": "distributor.client-identity-rate-limit.multi.mirror-timeout",
+                  "x-format": "duration"
+                },
+                "primary": {
+                  "description": "Primary backend storage used by multi-client.",
+                  "type": "string",
+                  "x-cli-flag": "distributor.client-identity-rate-limit.multi.primary"
+                },
+                "secondary": {
+                  "description": "Secondary backend storage used by multi-client.",
+                  "type": "string",
+                  "x-cli-flag": "distributor.client-identity-rate-limit.multi.secondary"
+                }
+              },
+              "type": "object"
+            },
+            "prefix": {
+              "default": "distributor-client-identity-rate-limit/",
+              "description": "The prefix for the keys in the store. Should end with a /.",
+              "type": "string",
+              "x-cli-flag": "distributor.client-identity-rate-limit.prefix"
+            },
+            "store": {
+              "default": "consul",
+              "description": "Backend storage to use for the ring. Supported values are: consul, dynamodb, etcd, inmemory, memberlist, multi.",
+              "type": "string",
+              "x-cli-flag": "distributor.client-identity-rate-limit.store"
+            }
+          },
+          "type": "object"
+        },
+        "client_rate_limit_window": {
+          "default": "1s",
+          "description": "EXPERIMENTAL: Length of the fixed window per-(tenant, client) request counters are kept over, and the interval they're gossiped to and pruned from other distributors at. See docs/proposals/client-identity-ingestion-rate-limiting.md.",
+          "type": "string",
+          "x-cli-flag": "distributor.client-identity-rate-limit.window",
+          "x-format": "duration"
+        },
         "extend_writes": {
           "default": true,
           "description": "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.",
@@ -5681,6 +5781,24 @@
           "description": "True to block private and local addresses in Alertmanager receiver integrations. It blocks private addresses defined by  RFC 1918 (IPv4 addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local unicast and local multicast addresses.",
           "type": "boolean",
           "x-cli-flag": "alertmanager.receivers-firewall-block-private-addresses"
+        },
+        "client_identity_ingestion_burst_size": {
+          "default": 0,
+          "description": "[Experimental] Per-client allowed ingestion burst size (in number of samples).",
+          "type": "number",
+          "x-cli-flag": "distributor.client-identity-ingestion-burst-size"
+        },
+        "client_identity_ingestion_rate_limit": {
+          "default": 0,
+          "description": "[Experimental] Per-client (X-Scope-ClientID) ingestion rate limit in samples per second, applied in addition to the per-tenant limit above. 0 disables this check (default; no behavior change).",
+          "type": "number",
+          "x-cli-flag": "distributor.client-identity-ingestion-rate-limit"
+        },
+        "client_identity_ingestion_tracked_clients_limit": {
+          "default": 1000,
+          "description": "[Experimental] Per-tenant cap on the number of distinct client identities tracked for ingestion rate limiting; oldest-used entries are evicted once this is reached.",
+          "type": "number",
+          "x-cli-flag": "distributor.client-identity-ingestion-tracked-clients-limit"
         },
         "close_idle_tsdb_timeout": {
           "default": "0s",

@@ -3443,6 +3443,7 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 - _no prefix_
 - `alertmanager.sharding-ring`
 - `compactor.ring`
+- `distributor.client-identity-rate-limit`
 - `distributor.ha-tracker`
 - `distributor.ring`
 - `parquet-converter.ring`
@@ -3748,6 +3749,75 @@ ring:
   # CLI flag: -distributor.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
 
+client_rate_limit_kvstore:
+  # Backend storage to use for the ring. Supported values are: consul, dynamodb,
+  # etcd, inmemory, memberlist, multi.
+  # CLI flag: -distributor.client-identity-rate-limit.store
+  [store: <string> | default = "consul"]
+
+  # The prefix for the keys in the store. Should end with a /.
+  # CLI flag: -distributor.client-identity-rate-limit.prefix
+  [prefix: <string> | default = "distributor-client-identity-rate-limit/"]
+
+  # The consul_config configures the consul client.
+  # The CLI flags prefix for this block config is:
+  # distributor.client-identity-rate-limit
+  [consul: <consul_config>]
+
+  dynamodb:
+    # Region to access dynamodb.
+    # CLI flag: -distributor.client-identity-rate-limit.dynamodb.region
+    [region: <string> | default = ""]
+
+    # Table name to use on dynamodb.
+    # CLI flag: -distributor.client-identity-rate-limit.dynamodb.table-name
+    [table_name: <string> | default = ""]
+
+    # Time to expire items on dynamodb.
+    # CLI flag: -distributor.client-identity-rate-limit.dynamodb.ttl-time
+    [ttl: <duration> | default = 0s]
+
+    # Time to refresh local ring with information on dynamodb.
+    # CLI flag: -distributor.client-identity-rate-limit.dynamodb.puller-sync-time
+    [puller_sync_time: <duration> | default = 1m]
+
+    # Maximum number of retries for DDB KV CAS.
+    # CLI flag: -distributor.client-identity-rate-limit.dynamodb.max-cas-retries
+    [max_cas_retries: <int> | default = 10]
+
+    # Timeout of dynamoDbClient requests. Default is 2m.
+    # CLI flag: -distributor.client-identity-rate-limit.dynamodb.timeout
+    [timeout: <duration> | default = 2m]
+
+  # The etcd_config configures the etcd client.
+  # The CLI flags prefix for this block config is:
+  # distributor.client-identity-rate-limit
+  [etcd: <etcd_config>]
+
+  multi:
+    # Primary backend storage used by multi-client.
+    # CLI flag: -distributor.client-identity-rate-limit.multi.primary
+    [primary: <string> | default = ""]
+
+    # Secondary backend storage used by multi-client.
+    # CLI flag: -distributor.client-identity-rate-limit.multi.secondary
+    [secondary: <string> | default = ""]
+
+    # Mirror writes to secondary store.
+    # CLI flag: -distributor.client-identity-rate-limit.multi.mirror-enabled
+    [mirror_enabled: <boolean> | default = false]
+
+    # Timeout for storing value to secondary store.
+    # CLI flag: -distributor.client-identity-rate-limit.multi.mirror-timeout
+    [mirror_timeout: <duration> | default = 2s]
+
+# EXPERIMENTAL: Length of the fixed window per-(tenant, client) request counters
+# are kept over, and the interval they're gossiped to and pruned from other
+# distributors at. See
+# docs/proposals/client-identity-ingestion-rate-limiting.md.
+# CLI flag: -distributor.client-identity-rate-limit.window
+[client_rate_limit_window: <duration> | default = 1s]
+
 # EXPERIMENTAL: Number of go routines to handle push calls from distributors to
 # ingesters. When no workers are available, a new goroutine will be spawned
 # automatically. If set to 0 (default), workers are disabled, and a new
@@ -3821,6 +3891,7 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 - _no prefix_
 - `alertmanager.sharding-ring`
 - `compactor.ring`
+- `distributor.client-identity-rate-limit`
 - `distributor.ha-tracker`
 - `distributor.ring`
 - `parquet-converter.ring`
@@ -4521,6 +4592,22 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Per-user allowed native histogram ingestion burst size (in number of samples)
 # CLI flag: -distributor.native-histogram-ingestion-burst-size
 [native_histogram_ingestion_burst_size: <int> | default = 0]
+
+# [Experimental] Per-client (X-Scope-ClientID) ingestion rate limit in samples
+# per second, applied in addition to the per-tenant limit above. 0 disables this
+# check (default; no behavior change).
+# CLI flag: -distributor.client-identity-ingestion-rate-limit
+[client_identity_ingestion_rate_limit: <float> | default = 0]
+
+# [Experimental] Per-client allowed ingestion burst size (in number of samples).
+# CLI flag: -distributor.client-identity-ingestion-burst-size
+[client_identity_ingestion_burst_size: <int> | default = 0]
+
+# [Experimental] Per-tenant cap on the number of distinct client identities
+# tracked for ingestion rate limiting; oldest-used entries are evicted once this
+# is reached.
+# CLI flag: -distributor.client-identity-ingestion-tracked-clients-limit
+[client_identity_ingestion_tracked_clients_limit: <int> | default = 1000]
 
 # Flag to enable, for all users, handling of samples with external labels
 # identifying replicas in an HA Prometheus setup.

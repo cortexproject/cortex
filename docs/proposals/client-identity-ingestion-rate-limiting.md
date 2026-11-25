@@ -164,8 +164,8 @@ Continue to ingestion
 ```
 
 A second rate limiter instance is added to the distributor, keyed by tenant and client identity
-together rather than by tenant alone. It enforces against the authoritative per-tenant, per-client
-counter via ring-based sharding — see "Distributed enforcement via the distributor ring"
+together rather than by tenant alone. It enforces against a cluster-wide per-tenant, per-client
+counter maintained via memberlist gossip — see "Distributed enforcement via memberlist gossip"
 below. This check runs as an *additional* step alongside, not instead of, the existing tenant-level
 limiter: a request must pass both. A tenant's aggregate throughput is still capped by the existing
 tenant-level rate limit; this only prevents one client from consuming the entire budget.
@@ -175,34 +175,47 @@ enforcement point resolves the tenant from the combined key and reads the config
 that tenant's overrides. The *limit value* is still a single per-tenant number, same as every other
 Cortex limit; only the token bucket enforcing it is split per client.
 
-### Distributed enforcement via the distributor ring
+### Distributed enforcement via memberlist gossip
 
-Per-client limits are enforced using the existing distributor ring rather than gossip-based counter
-aggregation. Each `(tenant, client)` key is sharded onto the ring: the distributor instance that
-owns the shard for that key maintains the authoritative rate-limit counter for it.
+Per-client limits are enforced by gossiping counters across distributors via a memberlist-backed
+KV client, following the same store/merge pattern the HA tracker uses for elected-replica state
+(`pkg/ring/kv` with a `Merge`/`MergeContent`/`RemoveTombstones` proto type). Each distributor keeps
+its own local count of requests per `(tenant, client)` for a short fixed window (default 1s) and
+periodically gossips it; every distributor merges every other distributor's counts for the same key
+and sums them to get the cluster-wide count.
 
-When a distributor receives a write request carrying an `X-Scope-ClientID` value, it hashes
-`(tenant_id, client_id)` to determine the owning ring member, then:
+Concretely, for a `(tenant, client)` pair:
 
-- If it owns that shard, it increments and enforces the counter locally.
-- If another replica owns the shard, it forwards the rate-limit check to that replica via an
-  internal RPC before accepting or rejecting the request.
+- Each request increments this replica's own local counter for the current window and is admitted
+  or rejected against `local count + last-known sum of every other replica's count` versus the
+  tenant's configured limit (converted to a per-window capacity) plus burst.
+- Once per window, each distributor writes its own count for every client it has locally seen
+  activity for into the KV store (keyed by tenant), merging with whatever the other replicas have
+  already written; stale replica entries (e.g. from a distributor that's shut down) are pruned in
+  the same operation.
+- Every distributor also watches the same KV prefix, so it learns other replicas' latest counts as
+  they arrive and folds them into its own admission decisions.
 
 This approach:
 
-- **Works on any ring backend** (Consul, Etcd, memberlist) — not memberlist-only — because the
-  ring is used only for key ownership, not as a gossip transport.
-- **Eliminates convergence lag**: the owning replica holds the single authoritative counter; there
-  is no eventual-consistency window during which a burst can transiently exceed the configured
-  per-tenant limit before all replicas converge.
-- **Stays accurate under uneven load**: a client's requests landing on different distributors always
-  count against the same shard owner, regardless of which replica physically received each request.
+- **Needs no ring, shard ownership, or per-request RPC.** Gossip requires no single owner for a
+  key — every replica writes its own contribution and merges everyone else's. This is also why the
+  read-path (query-frontend) proposal can use the identical mechanism despite the query-frontend
+  not participating in any ring today.
+- **Fails open, by design.** A KV write/read failure means enforcement continues using whatever
+  local/peer state is already known rather than blocking traffic; a per-client protection mechanism
+  should never itself become an availability incident.
+- **Trades ring-based exactness for approximation.** Because every replica publishes and merges its
+  own counter rather than a single shard owner enforcing one authoritative count, the cluster-wide
+  view any individual replica acts on lags peers by up to one gossip window, and a client spread
+  evenly across all replicas can transiently exceed the configured limit by roughly one window's
+  worth of requests before the rest of the cluster catches up. For the "protect a shared tenant
+  budget from one noisy client" use case this proposal targets, that's an acceptable trade for
+  removing the ring/RPC dependency entirely; a strictly authoritative limit (never over by even one
+  window) would need to go back to ring-based shard ownership, at the cost of the per-request RPC
+  hop and reintroducing a ring dependency for the query-frontend. See "Alternatives Considered" for
+  that rejected design.
 
-The tradeoff is a potential per-request remote call to the shard owner when the receiving
-distributor does not own the relevant shard. For deployments with random load balancing in front of
-distributors, a majority of checks will require this hop. Whether the added latency is acceptable
-depends on the intra-cluster RPC latency for a given deployment; this is a known cost and worth
-calling out explicitly in the implementation phase.
 
 ### Bounding memory: capped tracking, not an unbounded map
 
@@ -312,7 +325,7 @@ Introduced as an **experimental** feature, consistent with how Cortex introduces
 (disabled by default, documented as experimental, graduated to stable after operational
 experience). Rollout in two phases:
 
-**Phase 1**: Ship with distributed enforcement (see "Distributed enforcement via the distributor ring"
+**Phase 1**: Ship with distributed enforcement (see "Distributed enforcement via memberlist gossip"
 above) behind the `client_identity_ingestion_rate_limit` per-tenant override, defaulting to `0`
 (disabled) so existing deployments see no change. Validate with a small number of opted-in tenants.
 
@@ -321,6 +334,16 @@ status.
 
 ## Alternatives Considered
 
+- **Ring-based shard ownership with RPC forwarding.** An earlier version of this proposal sharded
+  each `(tenant, client)` key onto the distributor ring, with the shard owner holding the single
+  authoritative counter and peers forwarding checks to it via an internal RPC. This is strictly more
+  accurate (no gossip convergence lag, no transient over-limit window) and works on any ring
+  backend, not just memberlist. Rejected in favor of gossip because it requires a per-request remote
+  call whenever the receiving distributor isn't the shard owner — a majority of checks, for
+  deployments with random load balancing in front of distributors — and because it depends on a
+  ring, which the read-path (query-frontend) companion proposal doesn't otherwise have and judged
+  not worth standing up just for this. Worth revisiting if the gossip window's approximation proves
+  too loose in practice.
 - **mTLS client certificate identity.** Cryptographically stronger than a trusted header, and
   Cortex's server already supports client-cert authentication. Rejected as the primary mechanism
   because it only works when Cortex itself terminates client TLS: a common deployment pattern is a

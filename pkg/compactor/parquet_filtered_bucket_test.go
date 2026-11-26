@@ -22,6 +22,7 @@ var parquetTestFiles = []string{
 	"1.labels.parquet",
 	"nested/2.chunks.parquet",
 	cortex_parquet.ConverterMarkerFileName,
+	cortex_parquet.NoConvertMarkerFileName,
 }
 
 func uploadBlockWithParquetFiles(t *testing.T, bkt objstore.Bucket, id ulid.ULID) {

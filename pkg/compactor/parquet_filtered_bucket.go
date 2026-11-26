@@ -23,7 +23,7 @@ type parquetFilteredBucket struct {
 }
 
 // newParquetFilteredBucket wraps the bucket used for compaction so that parquet
-// files and the parquet converter marker are not listed.
+// files and the parquet converter markers are not listed.
 func newParquetFilteredBucket(b objstore.InstrumentedBucket) objstore.InstrumentedBucket {
 	return &parquetFilteredBucket{Bucket: b}
 }
@@ -32,7 +32,10 @@ func isParquetObject(name string) bool {
 	if strings.HasSuffix(name, objstore.DirDelim) {
 		return false
 	}
-	return strings.HasSuffix(name, parquetFileSuffix) || path.Base(name) == cortex_parquet.ConverterMarkerFileName
+	base := path.Base(name)
+	return strings.HasSuffix(name, parquetFileSuffix) ||
+		base == cortex_parquet.ConverterMarkerFileName ||
+		base == cortex_parquet.NoConvertMarkerFileName
 }
 
 func (b *parquetFilteredBucket) Iter(ctx context.Context, dir string, f func(name string) error, options ...objstore.IterOption) error {

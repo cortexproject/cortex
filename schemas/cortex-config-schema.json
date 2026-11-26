@@ -7283,7 +7283,7 @@
         },
         "split_queries_by_interval": {
           "default": "0s",
-          "description": "Split queries by an interval and execute in parallel, 0 disables it. You should use a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks. This also determines how cache keys are chosen when result caching is enabled",
+          "description": "Split queries by an interval and execute in parallel, 0 disables it. This also determines how cache keys are chosen when result caching is enabled.",
           "type": "string",
           "x-cli-flag": "querier.split-queries-by-interval",
           "x-format": "duration"

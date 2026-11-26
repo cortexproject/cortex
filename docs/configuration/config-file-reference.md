@@ -3146,6 +3146,16 @@ The `compactor_config` configures the compactor for the blocks storage.
 # CLI flag: -compactor.compaction-concurrency
 [compaction_concurrency: <int> | default = 1]
 
+# How long to let a compaction that is already running finish once shutdown has
+# been requested, before cancelling it. As soon as shutdown is requested the
+# compactor stops planning new compaction groups and stops picking up further
+# tenants, regardless of this setting. 0 cancels the running compaction
+# immediately, discarding the work it has done so far. A compaction is only
+# allowed to finish if the process is given at least this long to terminate, so
+# this value should be below the deployment's termination grace period.
+# CLI flag: -compactor.compaction-drain-timeout
+[compaction_drain_timeout: <duration> | default = 0s]
+
 # How frequently compactor should run blocks cleanup and maintenance, as well as
 # update the bucket index.
 # CLI flag: -compactor.cleanup-interval

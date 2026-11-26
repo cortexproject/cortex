@@ -40,6 +40,7 @@
 * [BUGFIX] Querier: Increment `cortex_query_evictions_total` and deregister the victim before cancelling it in the query evictor, fixing double-counted evictions of still-unwinding queries. #7616
 * [BUGFIX] Ring: Ignore READONLY ingesters when assigning tokens so the active series remain balanced. #7946
 * [BUGFIX] Distributor: Fix a `panic: send on closed channel` crash during shutdown when `-distributor.num-push-workers` or `-distributor.num-query-workers` is greater than 0. #7964
+* [BUGFIX] Alertmanager: Fix `/api/v2/alerts` and `/api/v2/alerts/groups` reporting all alerts as `unprocessed` since the upgrade to Alertmanager v0.33.0. #7970
 
 ## 1.22.0 2026-11-19
 

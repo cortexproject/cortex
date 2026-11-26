@@ -340,8 +340,6 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 	}
 	tmpl.ExternalURL = am.cfg.ExternalURL
 
-	am.api.Update(conf, func(_ context.Context, _ model.LabelSet) {})
-
 	// Ensure inhibitor is set before being called
 	if am.inhibitor != nil {
 		am.inhibitor.Stop()
@@ -353,6 +351,13 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 	}
 
 	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, util_log.GoKitLogToSlog(log.With(am.logger, "component", "inhibitor")), eventrecorder.NopRecorder())
+	silencer := silence.NewSilencer(am.silences, util_log.GoKitLogToSlog(am.logger), eventrecorder.NopRecorder())
+
+	apiInhibitor := am.inhibitor
+	am.api.Update(conf, func(ctx context.Context, labels model.LabelSet) {
+		apiInhibitor.Mutes(ctx, labels)
+		silencer.Mutes(ctx, labels)
+	})
 
 	waitFunc := clusterWait(am.state.Position, am.cfg.PeerTimeout)
 
@@ -395,7 +400,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		integrationsMap,
 		waitFunc,
 		am.inhibitor,
-		silence.NewSilencer(am.silences, util_log.GoKitLogToSlog(am.logger), eventrecorder.NopRecorder()),
+		silencer,
 		timeinterval.NewIntervener(timeIntervals),
 		am.groupMarker,
 		am.nflog,

@@ -3,8 +3,11 @@ package client
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http/httptest"
+	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +20,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // TestMarshall is useful to try out various optimisation on the unmarshalling code.
@@ -392,4 +396,54 @@ func TestClosableHealthAndIngesterClient_ShouldNotPanicWhenClose(t *testing.T) {
 	require.NoError(t, client.Close())
 
 	time.Sleep(100 * time.Millisecond)
+}
+
+// grpcGoroutines counts the running goroutines that have a gRPC frame on their stack.
+// A ClientConn that is still open keeps at least its reconnect goroutine around, so
+// this is enough to tell a closed connection from a leaked one.
+func grpcGoroutines() int {
+	buf := make([]byte, 1<<20)
+	for {
+		n := runtime.Stack(buf, true)
+		if n < len(buf) {
+			buf = buf[:n]
+			break
+		}
+		buf = make([]byte, 2*len(buf))
+	}
+
+	count := 0
+	for stack := range strings.SplitSeq(string(buf), "\n\n") {
+		if strings.Contains(stack, "google.golang.org/grpc") {
+			count++
+		}
+	}
+	return count
+}
+
+// TestMakeIngesterClient_StreamSetupFailureClosesConnection covers the stream-push
+// factory used by the distributor and the querier: when the push streams cannot be
+// opened, MakeIngesterClient returns an error and the client is discarded, so nothing
+// will ever call Close() on it and it has to clean up after itself.
+func TestMakeIngesterClient_StreamSetupFailureClosesConnection(t *testing.T) {
+	// Reserve a port and release it, so grpc.NewClient still succeeds (it connects
+	// lazily) while every PushStream worker fails to establish a transport.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := l.Addr().String()
+	require.NoError(t, l.Close())
+
+	var cfg Config
+	flagext.DefaultValues(&cfg)
+
+	baseline := grpcGoroutines()
+
+	c, err := MakeIngesterClient(addr, cfg, true)
+	require.Error(t, err, "opening the push streams should fail against an address that refuses connections")
+	require.Nil(t, c)
+
+	require.Eventually(t, func() bool {
+		return grpcGoroutines() <= baseline
+	}, 30*time.Second, 50*time.Millisecond,
+		"gRPC goroutines stayed above the %d at the start of the test, so the connection of the discarded client was left open", baseline)
 }

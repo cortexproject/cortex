@@ -168,6 +168,11 @@ func MakeIngesterClient(addr string, cfg Config, useStreamConnection bool) (Heal
 		streamCtx, streamCancel := context.WithCancel(context.Background())
 		err = c.Run(make(chan *streamWriteJob, INGESTER_CLIENT_STREAM_WORKER_COUNT), streamCtx, streamCancel)
 		if err != nil {
+			// The client is discarded, so nothing will ever call Close() on it. Undo what
+			// has already been set up: cancelling streamCtx stops the job goroutines of the
+			// workers that did start, and closing conn stops its reconnect loop.
+			streamCancel()
+			_ = conn.Close()
 			return nil, err
 		}
 	}
@@ -210,7 +215,9 @@ func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJo
 	c.streamCtx = streamCtx
 	c.streamCancel = streamCancel
 
-	var workerErr error
+	// All the workers below run concurrently, so the error they report has to be
+	// stored through something that is safe for concurrent writes.
+	var workerErr atomic.Error
 	var wg sync.WaitGroup
 	// Sanitize addr: colons (from host:port) are not allowed in tenant IDs.
 	sanitizedAddr := strings.ReplaceAll(c.addr, ":", "-")
@@ -220,12 +227,12 @@ func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJo
 			workerCtx := user.InjectOrgID(streamCtx, workerName)
 			err := c.worker(workerCtx)
 			if err != nil {
-				workerErr = err
+				workerErr.Store(err)
 			}
 		})
 	}
 	wg.Wait()
-	return workerErr
+	return workerErr.Load()
 }
 
 func (c *closableHealthAndIngesterClient) worker(ctx context.Context) error {

@@ -40,6 +40,7 @@
 * [BUGFIX] Querier: Increment `cortex_query_evictions_total` and deregister the victim before cancelling it in the query evictor, fixing double-counted evictions of still-unwinding queries. #7616
 * [BUGFIX] Ring: Ignore READONLY ingesters when assigning tokens so the active series remain balanced. #7946
 * [BUGFIX] Distributor: Fix a `panic: send on closed channel` crash during shutdown when `-distributor.num-push-workers` or `-distributor.num-query-workers` is greater than 0. #7964
+* [BUGFIX] Ingester Client: Fix a gRPC connection leak when `-distributor.use-stream-push` is enabled and the push streams to an ingester cannot be opened. #7969
 
 ## 1.22.0 2026-11-19
 

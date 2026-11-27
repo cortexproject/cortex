@@ -62,6 +62,7 @@ Note that these are not ordered by priority.&lt;/p&gt;
 &lt;li&gt;[BUGFIX] Querier: Increment &lt;code&gt;cortex_query_evictions_total&lt;/code&gt; and deregister the victim before cancelling it in the query evictor, fixing double-counted evictions of still-unwinding queries. &lt;a href="https://github.com/cortexproject/cortex/pull/7616"&gt;#7616&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Ring: Ignore READONLY ingesters when assigning tokens so the active series remain balanced. &lt;a href="https://github.com/cortexproject/cortex/pull/7946"&gt;#7946&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Distributor: Fix a &lt;code&gt;panic: send on closed channel&lt;/code&gt; crash during shutdown when &lt;code&gt;-distributor.num-push-workers&lt;/code&gt; or &lt;code&gt;-distributor.num-query-workers&lt;/code&gt; is greater than 0. &lt;a href="https://github.com/cortexproject/cortex/pull/7964"&gt;#7964&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] Ring: Fix &lt;code&gt;DoBatch&lt;/code&gt; counting a key more than once when more replicas than the quorum succeed, which in rare cases could hide a write error from a key that did not reach quorum. A distributor push now always waits until every series reaches quorum, so it returns the error of a series that misses quorum, and takes as long as its slowest series to reach quorum. &lt;a href="https://github.com/cortexproject/cortex/pull/7975"&gt;#7975&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id="1220-2026-11-19"&gt;1.22.0 2026-11-19&lt;/h2&gt;
 &lt;ul&gt;

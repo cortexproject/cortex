@@ -41,6 +41,7 @@
 * [BUGFIX] Ring: Ignore READONLY ingesters when assigning tokens so the active series remain balanced. #7946
 * [BUGFIX] Distributor: Fix a `panic: send on closed channel` crash during shutdown when `-distributor.num-push-workers` or `-distributor.num-query-workers` is greater than 0. #7964
 * [BUGFIX] Ring: Fix `DoBatch` counting a key more than once when more replicas than the quorum succeed, which in rare cases could hide a write error from a key that did not reach quorum. A distributor push now always waits until every series reaches quorum, so it returns the error of a series that misses quorum, and takes as long as its slowest series to reach quorum. #7975
+* [BUGFIX] HATracker: Do not report a sample rejected by the HA tracker from a non-elected replica as a failed KV store CAS operation. It was marking the `CAS` span as failed and increasing `memberlist_client_cas_failure_total`, although the sample was being deduplicated as expected. #7914
 
 ## 1.22.0 2026-11-19
 

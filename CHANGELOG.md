@@ -4,6 +4,9 @@
 
 * [CHANGE] Ingester: Make `close_idle_tsdb_timeout` a per-tenant limit (`-limits.close-idle-tsdb-timeout`). `-blocks-storage.tsdb.close-idle-tsdb-timeout` is deprecated and will be removed in v1.24.0. A positive `close_idle_tsdb_timeout` must now be at least `query_store_after` when `query_ingesters_within` is 0. #7813
 * [CHANGE] Compactor: Add the `time_range_milliseconds` label to `cortex_compactor_remaining_planned_compactions` and `cortex_compactor_oldest_partition_offset`, reporting them per compaction time range instead of summed over all of them. #7959
+* [CHANGE] Query Frontend: Rename `cortex_rejected_queries_total` metric label `reason` values for fetched-data limit rejections. #7517
+  * Old values: `series_fetched`, `chunks_fetched`, `chunk_bytes_fetched`, `data_bytes_fetched`.
+  * New values: `fetched_series_exceeded`, `fetched_chunks_exceeded`, `fetched_chunk_bytes_exceeded`, `fetched_data_bytes_exceeded`.
 * [FEATURE] Ruler: Add experimental support for federated rule groups. A rule group listing tenants in its `source_tenants` field is evaluated against those tenants while the resulting series and alerts are written to the tenant owning the rule group. Enabled with `-ruler.enable-federated-rules` (requires `-tenant-federation.enabled`), and restricted to selected tenants with `-ruler.allowed-federated-tenants` and `-ruler.disallowed-federated-tenants`. #7828
 * [FEATURE] Distributor: Add experimental OTLP metrics ingestion over gRPC (`opentelemetry.proto.collector.metrics.v1.MetricsService/Export`) on the gRPC server port. Enable it with `-distributor.otlp.grpc-enabled`. The tenant is read from the `X-Scope-OrgID` gRPC metadata, and the request size is limited by `-server.grpc-max-recv-msg-size-bytes`. #7873
 * [FEATURE] Storage: Add support for Alibaba Cloud OSS as a backend for blocks, ruler, and alertmanager storage. Configured via `-<prefix>.oss.*` flags with `backend: oss`. #7907

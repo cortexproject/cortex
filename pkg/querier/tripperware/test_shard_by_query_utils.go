@@ -80,6 +80,14 @@ http_requests_total`,
 			name:       "aggregate by expression with label_join, sharding label is dynamic",
 			expression: `sum by (dst_label) (label_join(metric, "dst_label", ",", "src_label"))`,
 		},
+		{
+			name:       "binary expression reversing the order of sort",
+			expression: `0 - sort(sum by (pod) (http_requests_total))`,
+		},
+		{
+			name:       "binary expression scaling the order of sort_desc",
+			expression: `sort_desc(sum by (pod) (http_requests_total)) * -1`,
+		},
 	}
 
 	shardableByLabels := []queries{

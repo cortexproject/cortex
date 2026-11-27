@@ -71,7 +71,8 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 		"shard_by.sharding_labels", analysis.ShardingLabels(),
 	)
 
-	if !analysis.IsShardable() {
+	// The order of the merged result can't match Prometheus for these queries.
+	if !analysis.IsShardable() || hasUnmergeableSortOrder(r.GetQuery()) {
 		return s.next.Do(ctx, r)
 	}
 

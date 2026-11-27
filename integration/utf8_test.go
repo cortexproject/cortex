@@ -196,6 +196,7 @@ func Test_PushQuery_UTF8(t *testing.T) {
 		"-auth.enabled":           "true",
 		"-name-validation-scheme": "utf8",
 		// ingester
+		"-ingester.max-exemplars":              "100",
 		"-blocks-storage.s3.access-key-id":     e2edb.MinioAccessKey,
 		"-blocks-storage.s3.secret-access-key": e2edb.MinioSecretKey,
 		"-blocks-storage.s3.bucket-name":       bucketName,
@@ -219,6 +220,11 @@ func Test_PushQuery_UTF8(t *testing.T) {
 
 	utf8Series, _ := generateSeries("series.1", now, prompb.Label{Name: "test.utf8.metric", Value: "😄"})
 	legacySeries, _ := generateSeries("series_2", now, prompb.Label{Name: "job", Value: "test"})
+	utf8Series[0].Exemplars = []prompb.Exemplar{{
+		Labels:    []prompb.Label{{Name: "trace.id.😄", Value: "abc"}},
+		Value:     1,
+		Timestamp: e2e.TimeToMilliseconds(now),
+	}}
 
 	metadata := []prompb.MetricMetadata{
 		{
@@ -247,6 +253,19 @@ func Test_PushQuery_UTF8(t *testing.T) {
 	vec := queryResult.(model.Vector)
 	require.Equal(t, 1, len(vec))
 
+	// range query
+	rangeResult, err := c.QueryRange(query, now.Add(-time.Minute), now.Add(time.Minute), 15*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, rangeResult.Type())
+	require.Equal(t, 1, rangeResult.(model.Matrix).Len())
+
+	// exemplars
+	exemplars, err := c.QueryExemplars(`{"series.1"}`, now.Add(-time.Minute), now.Add(time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(exemplars))
+	require.Equal(t, 1, len(exemplars[0].Exemplars))
+	require.Equal(t, model.LabelValue("abc"), exemplars[0].Exemplars[0].Labels["trace.id.😄"])
+
 	// label names
 	start := now
 	end := now.Add(time.Minute * 5)
@@ -270,4 +289,102 @@ func Test_PushQuery_UTF8(t *testing.T) {
 	metadataResult, err := c.Metadata("metadata.name", "")
 	require.NoError(t, err)
 	require.Equal(t, 1, len(metadataResult))
+}
+
+// Test_StoreGateway_UTF8 queries UTF-8 series after they were shipped to the
+// storage and removed from the ingester, so they are served by the
+// store-gateway.
+func Test_StoreGateway_UTF8(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Configure the blocks storage to frequently compact TSDB head
+	// and ship blocks to the storage.
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-name-validation-scheme":                  "utf8",
+		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
+		"-blocks-storage.tsdb.ship-interval":       "1s",
+		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
+	})
+
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
+	require.NoError(t, err)
+
+	// The second series is far enough ahead to make the ingester cut and ship
+	// a block with the first one, and then drop it from the head.
+	series1Timestamp := time.Now()
+	series2Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
+	series1, _ := generateSeries("series.1", series1Timestamp, prompb.Label{Name: "test.utf8.metric", Value: "😄"})
+	series2, _ := generateSeries("series.2", series2Timestamp, prompb.Label{Name: "test.utf8.metric", Value: "😄"})
+
+	res, err := c.Push(series1)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+	res, err = c.Push(series2)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_shipper_uploads_total"))
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series_removed_total"))
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
+
+	// Start the compactor to create the bucket index.
+	compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(compactor))
+
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-blocks-storage.bucket-store.sync-interval": "1s",
+	}), "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-blocks-storage.bucket-store.sync-interval": "1s",
+	}), "")
+	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
+	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
+
+	// Make sure the consistency checker doesn't consider the block uploaded
+	// too recently.
+	time.Sleep(3 * time.Second)
+
+	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	query := `{"series.1", "test.utf8.metric"="😄"}`
+	result, err := c.Query(query, series1Timestamp)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+	require.Equal(t, 1, len(result.(model.Vector)))
+
+	rangeResult, err := c.QueryRange(query, series1Timestamp.Add(-time.Minute), series1Timestamp, time.Second)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, rangeResult.Type())
+	require.Equal(t, 1, rangeResult.(model.Matrix).Len())
+
+	start := series1Timestamp.Add(-time.Minute)
+	end := series1Timestamp.Add(time.Second)
+
+	series, err := c.Series([]string{`{"series.1"}`}, start, end)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(series))
+	require.Equal(t, `{__name__="series.1", test.utf8.metric="😄"}`, series[0].String())
+
+	labelValues, err := c.LabelValues("test.utf8.metric", start, end, []string{`{"series.1"}`})
+	require.NoError(t, err)
+	require.Equal(t, model.LabelValues{"😄"}, labelValues)
+
+	// The block was queried through the store-gateway.
+	require.NoError(t, storeGateway.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"thanos_store_index_cache_requests_total"}, e2e.WaitMissingMetrics))
 }

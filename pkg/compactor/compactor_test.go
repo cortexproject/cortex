@@ -1663,6 +1663,7 @@ func prepareWithGrouperFactory(t *testing.T, compactorCfg Config, bucketClient o
 	}
 
 	blocksCompactorFactory := func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, PlannerFactory, error) {
+		tsdbCompactor.ctx = ctx
 		return tsdbCompactor,
 			func(ctx context.Context, bkt objstore.InstrumentedBucket, _ log.Logger, _ Config, noCompactMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler, _ string, _ prometheus.Counter, _ prometheus.Counter, _ *compactorMetrics, _ *block.IgnoreDeletionMarkFilter) compact.Planner {
 				tsdbPlanner.noCompactMarkFilters = append(tsdbPlanner.noCompactMarkFilters, noCompactMarkFilter)
@@ -1689,6 +1690,9 @@ func prepareWithGrouperFactory(t *testing.T, compactorCfg Config, bucketClient o
 
 type tsdbCompactorMock struct {
 	mock.Mock
+
+	// A real TSDB compactor checks the context it was built with while merging.
+	ctx context.Context
 }
 
 func (m *tsdbCompactorMock) Plan(dir string) ([]string, error) {
@@ -2261,6 +2265,66 @@ func TestCompactor_ShouldStopPlanningNewGroupsOnceShutdownIsRequested(t *testing
 	`),
 		"cortex_compactor_runs_completed_total",
 		"cortex_compactor_runs_interrupted_total",
+	))
+}
+
+func TestCompactor_ShouldNotCancelTheMergeOnShutdownWhenDrainTimeoutIsSet(t *testing.T) {
+	bucketClient := objstore.WithNoopInstr(objstore.NewInMemBucket())
+	id := ulid.MustNew(ulid.Now(), rand.Reader)
+	require.NoError(t, bucketClient.Upload(context.Background(), "user-1/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+
+	b1 := createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
+	b2 := createTSDBBlock(t, bucketClient, "user-1", 20, 30, map[string]string{"__name__": "Teste"})
+
+	cfg := prepareConfig()
+	cfg.CompactionDrainTimeout = time.Minute
+
+	c, tsdbCompactor, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient, nil)
+
+	mergeCalled := make(chan struct{})
+	releaseMerge := make(chan struct{})
+	var mergeCtxErr error
+	var once sync.Once
+
+	tsdbCompactor.On("CompactWithBlockPopulator", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]ulid.ULID{}, nil).Run(func(mock.Arguments) {
+		once.Do(func() {
+			close(mergeCalled)
+			<-releaseMerge
+			mergeCtxErr = tsdbCompactor.ctx.Err()
+		})
+	})
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{
+		{
+			ULID:    b1,
+			MinTime: 10,
+			MaxTime: 20,
+			Stats:   tsdb.BlockStats{NumSamples: 1},
+		},
+		{
+			ULID:    b2,
+			MinTime: 20,
+			MaxTime: 30,
+			Stats:   tsdb.BlockStats{NumSamples: 1},
+		},
+	}, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+
+	<-mergeCalled
+	cancel()
+	close(releaseMerge)
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+
+	assert.NoError(t, mergeCtxErr)
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+		# TYPE cortex_compactor_runs_completed_total counter
+		# HELP cortex_compactor_runs_completed_total Total number of compaction runs successfully completed.
+		cortex_compactor_runs_completed_total 1
+	`),
+		"cortex_compactor_runs_completed_total",
 	))
 }
 

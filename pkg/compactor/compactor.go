@@ -466,6 +466,9 @@ type Compactor struct {
 	// Client used to run operations on the bucket storing blocks.
 	bucketClient objstore.InstrumentedBucket
 
+	compactionCtx    context.Context
+	cancelCompaction context.CancelFunc
+
 	// Ring used for sharding compactions.
 	ringLifecycler         *ring.Lifecycler
 	ring                   *ring.Ring
@@ -664,23 +667,30 @@ func newCompactor(
 }
 
 // Start the compactor.
-func (c *Compactor) starting(ctx context.Context) error {
+func (c *Compactor) starting(ctx context.Context) (err error) {
 	begin := time.Now()
 	defer func() {
 		c.CompactorStartDurationSeconds.Set(time.Since(begin).Seconds())
 		level.Info(c.logger).Log("msg", "compactor started", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}()
 
-	var err error
+	// The TSDB compactor and the GCS token source keep the context they are
+	// built with, so both are built with the compaction context.
+	c.compactionCtx, c.cancelCompaction = compactionContext(ctx, c.compactorCfg.CompactionDrainTimeout)
+	defer func() {
+		if err != nil {
+			c.cancelCompaction()
+		}
+	}()
 
 	// Create bucket client.
-	c.bucketClient, err = c.bucketClientFactory(ctx)
+	c.bucketClient, err = c.bucketClientFactory(c.compactionCtx)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bucket client")
 	}
 
 	// Create blocks compactor dependencies.
-	c.blocksCompactor, c.blocksPlannerFactory, err = c.blocksCompactorFactory(ctx, c.compactorCfg, c.logger, c.registerer)
+	c.blocksCompactor, c.blocksPlannerFactory, err = c.blocksCompactorFactory(c.compactionCtx, c.compactorCfg, c.logger, c.registerer)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize compactor dependencies")
 	}
@@ -807,6 +817,7 @@ func (c *Compactor) stopping(_ error) error {
 	defer func() {
 		level.Info(c.logger).Log("msg", "compactor stopped", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}()
+	defer c.cancelCompaction()
 
 	ctx := context.Background()
 
@@ -851,9 +862,6 @@ func (c *Compactor) running(ctx context.Context) error {
 		go c.userIndexUpdateLoop(ctx)
 	}
 
-	compactionCtx, cancelCompaction := compactionContext(ctx, c.compactorCfg.CompactionDrainTimeout)
-	defer cancelCompaction()
-
 	// Run an initial compaction before starting the interval.
 	// Insert jitter right before compaction starts to avoid multiple starting compactor to be in sync
 	select {
@@ -861,7 +869,7 @@ func (c *Compactor) running(ctx context.Context) error {
 		return ctx.Err()
 	case <-time.After(time.Duration(rand.Int63n(int64(float64(c.compactorCfg.CompactionInterval) * 0.1)))):
 	}
-	c.compactUsers(ctx, compactionCtx)
+	c.compactUsers(ctx, c.compactionCtx)
 
 	ticker := time.NewTicker(c.compactorCfg.CompactionInterval)
 	defer ticker.Stop()
@@ -872,7 +880,7 @@ func (c *Compactor) running(ctx context.Context) error {
 			// Insert jitter right before compaction starts, so that there will always
 			// have jitter even compaction time is longer than CompactionInterval
 			time.Sleep(time.Duration(rand.Int63n(int64(float64(c.compactorCfg.CompactionInterval) * 0.1))))
-			c.compactUsers(ctx, compactionCtx)
+			c.compactUsers(ctx, c.compactionCtx)
 		case <-ctx.Done():
 			return nil
 		case err := <-c.ringSubservicesWatcher.Chan():

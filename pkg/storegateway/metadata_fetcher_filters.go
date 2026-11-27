@@ -2,6 +2,7 @@ package storegateway
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -75,6 +76,63 @@ func (f *IgnoreDeletionMarkFilter) FilterWithBucketIndex(_ context.Context, meta
 	}
 
 	return nil
+}
+
+// IgnoreParquetBlocksFilter drops Parquet-converted blocks from the TSDB store
+// sync so they are served by the Parquet store instead.
+//
+// It also records the IDs of all Parquet-converted blocks in the bucket index and
+// exposes them via ParquetBlockIDs. The hybrid bucket store routes a block to the
+// Parquet store iff it is recorded here, so excluding a block from the TSDB store and
+// routing it to the Parquet store always use the same bucket index snapshot.
+type IgnoreParquetBlocksFilter struct {
+	logger log.Logger
+
+	// parquetBlockIDs is the set of Parquet-converted block IDs in the bucket index as of the
+	// last sync, including blocks this store-gateway does not own.
+	parquetBlockIDsMu sync.RWMutex
+	parquetBlockIDs   map[string]struct{}
+}
+
+func NewIgnoreParquetBlocksFilter(logger log.Logger) *IgnoreParquetBlocksFilter {
+	return &IgnoreParquetBlocksFilter{logger: logger}
+}
+
+// Filter implements block.MetadataFilter.
+//
+// Without the bucket index we cannot tell whether a block has been converted to
+// Parquet, so this is intentionally a no-op.
+func (f *IgnoreParquetBlocksFilter) Filter(_ context.Context, _ map[ulid.ULID]*metadata.Meta, _ block.GaugeVec, _ block.GaugeVec) error {
+	return nil
+}
+
+// FilterWithBucketIndex implements MetadataFilterWithBucketIndex.
+func (f *IgnoreParquetBlocksFilter) FilterWithBucketIndex(_ context.Context, metas map[ulid.ULID]*metadata.Meta, idx *bucketindex.Index, synced block.GaugeVec) error {
+	parquetBlockIDs := make(map[string]struct{})
+	for _, b := range idx.ParquetBlocks() {
+		if _, ok := metas[b.ID]; ok {
+			level.Debug(f.logger).Log("msg", "ignoring block because it has been converted to parquet", "block", b.ID)
+			synced.WithLabelValues(parquetConvertedMeta).Inc()
+			delete(metas, b.ID)
+		}
+
+		// Record every Parquet block for routing, even one already excluded by a previous filter.
+		parquetBlockIDs[b.ID.String()] = struct{}{}
+	}
+
+	f.parquetBlockIDsMu.Lock()
+	f.parquetBlockIDs = parquetBlockIDs
+	f.parquetBlockIDsMu.Unlock()
+
+	return nil
+}
+
+// ParquetBlockIDs returns the Parquet-converted block IDs as of the last sync, or nil
+// if the filter has not run yet.
+func (f *IgnoreParquetBlocksFilter) ParquetBlockIDs() map[string]struct{} {
+	f.parquetBlockIDsMu.RLock()
+	defer f.parquetBlockIDsMu.RUnlock()
+	return f.parquetBlockIDs
 }
 
 func NewIgnoreNonQueryableBlocksFilter(logger log.Logger, ignoreWithin time.Duration) *IgnoreNonQueryableBlocksFilter {

@@ -163,6 +163,28 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedErr: nil,
 		},
+		"should fail on parquet bucket store with fallback enabled and bucket index disabled": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.BucketStoreType = string(ParquetBucketStore)
+				cfg.BucketStore.BucketIndex.Enabled = false
+			},
+			expectedErr: ErrParquetFallbackRequiresBucketIndex,
+		},
+		"should pass on parquet bucket store with fallback enabled and bucket index enabled": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.BucketStoreType = string(ParquetBucketStore)
+				cfg.BucketStore.BucketIndex.Enabled = true
+			},
+			expectedErr: nil,
+		},
+		"should pass on parquet bucket store with fallback disabled and bucket index disabled": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.BucketStoreType = string(ParquetBucketStore)
+				cfg.BucketStore.ParquetFallbackDisabled = true
+				cfg.BucketStore.BucketIndex.Enabled = false
+			},
+			expectedErr: nil,
+		},
 		"should fail on negative max concurrent data bytes": {
 			setup: func(cfg *BlocksStorageConfig) {
 				cfg.BucketStore.MaxConcurrentDataBytes = -1

@@ -122,6 +122,12 @@ func selectChunkSeriesSet(ctx context.Context, sortSeries bool, hints *storage.S
 		p = index.ShardedPostings(p, hints.ShardIndex, hints.ShardCount)
 	}
 	if sortSeries {
+		// Sorting loads and compares the labels of every matching series without
+		// checking the context. The postings above may have been computed by an
+		// uncancellable cache fetch, so check the context before doing more work.
+		if err := ctx.Err(); err != nil {
+			return storage.ErrChunkSeriesSet(err)
+		}
 		p = index.SortedPostings(p)
 	}
 	return prom_tsdb.NewBlockChunkSeriesSet(blockID, index, chunks, tombstones, p, mint, maxt, disableTrimming)

@@ -32,8 +32,7 @@ func TestOOONativeHistogramIngestion(t *testing.T) {
 
 	flags := mergeFlags(baseFlags, map[string]string{
 		// ooo setting
-		"-blocks-storage.tsdb.enable-native-histograms": "true",
-		"-ingester.out-of-order-time-window":            "5m",
+		"-ingester.out-of-order-time-window": "5m",
 		// alert manager
 		"-alertmanager.web.external-url": "http://localhost/alertmanager",
 		// consul
@@ -117,10 +116,9 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 			// Configure the blocks storage to frequently compact TSDB head
 			// and ship blocks to the storage.
 			flags := mergeFlags(BlocksStorageFlags(), map[string]string{
-				"-blocks-storage.tsdb.block-ranges-period":      blockRangePeriod.String(),
-				"-blocks-storage.tsdb.ship-interval":            "1s",
-				"-blocks-storage.tsdb.retention-period":         ((blockRangePeriod * 2) - 1).String(),
-				"-blocks-storage.tsdb.enable-native-histograms": "true",
+				"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
+				"-blocks-storage.tsdb.ship-interval":       "1s",
+				"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
 			})
 
 			// Start dependencies.

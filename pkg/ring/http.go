@@ -154,7 +154,7 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	sort.Strings(ingesterIDs)
 
-	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
+	storageLastUpdate := r.lastUpdateTime()
 	var ingesters []ingesterDesc
 	numTokens, ownedByAz := r.countTokensByAz()
 	_, owned := r.countTokens()

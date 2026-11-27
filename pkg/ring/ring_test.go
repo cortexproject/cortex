@@ -2515,6 +2515,79 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 	}
 }
 
+// keyedLastUpdateKV returns a last update time only for its own key, and the
+// zero time for any other key, as the DynamoDB client does.
+type keyedLastUpdateKV struct {
+	MockClient
+	key        string
+	lastUpdate time.Time
+}
+
+func (k *keyedLastUpdateKV) LastUpdateTime(key string) time.Time {
+	if key == k.key {
+		return k.lastUpdate
+	}
+	return time.Time{}
+}
+
+func TestRing_ShuffleShard_ShouldHonorHeartbeatTimeout(t *testing.T) {
+	const heartbeatTimeout = time.Minute
+	// A fixed time in the past, so the test fails if health checks use the wall clock.
+	lastUpdate := time.Unix(1_700_000_000, 0)
+	stale := lastUpdate.Add(-2 * heartbeatTimeout).Unix()
+
+	// Four instances and a shard size of 3, so ShuffleShard builds a subring. For "user" it
+	// holds zone-a-1, which has a stale heartbeat, zone-b-1, and zone-c-1.
+	ringDesc := &Desc{Ingesters: map[string]InstanceDesc{
+		"zone-a-1": {Addr: "zone-a-1", Zone: "zone-a", State: ACTIVE, Timestamp: stale, Tokens: []uint32{100}},
+		"zone-a-2": {Addr: "zone-a-2", Zone: "zone-a", State: ACTIVE, Timestamp: stale, Tokens: []uint32{200}},
+		"zone-b-1": {Addr: "zone-b-1", Zone: "zone-b", State: ACTIVE, Timestamp: lastUpdate.Unix(), Tokens: []uint32{300}},
+		"zone-c-1": {Addr: "zone-c-1", Zone: "zone-c", State: ACTIVE, Timestamp: lastUpdate.Unix(), Tokens: []uint32{400}},
+	}}
+
+	kvClient := &keyedLastUpdateKV{key: "ring", lastUpdate: lastUpdate}
+	ring := Ring{
+		cfg:                  Config{HeartbeatTimeout: heartbeatTimeout, ZoneAwarenessEnabled: true, ReplicationFactor: 3},
+		key:                  "ring",
+		ringDesc:             ringDesc,
+		ringTokens:           ringDesc.GetTokens(),
+		ringTokensByZone:     ringDesc.getTokensByZone(),
+		ringInstanceByToken:  ringDesc.getTokensInfo(),
+		ringZones:            getZones(ringDesc.getTokensByZone()),
+		strategy:             NewDefaultReplicationStrategy(),
+		KVClient:             kvClient,
+		shuffledSubringCache: map[subringCacheKey]*cachedSubring{},
+	}
+
+	subring := ring.ShuffleShard("user", 3)
+	require.True(t, subring.HasInstance("zone-a-1"))
+	set, err := subring.Get(0, Write, nil, nil, nil)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"zone-b-1", "zone-c-1"}, set.GetAddresses())
+
+	set, err = ring.ShuffleShardWithLookback("user", 3, time.Hour, lastUpdate).GetReplicationSetForOperation(Read)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"zone-b-1", "zone-c-1"}, set.GetAddresses())
+
+	// The KV store polls again. zone-a-1 and zone-c-1 heartbeat, and zone-b-1 misses the poll.
+	kvClient.lastUpdate = lastUpdate.Add(heartbeatTimeout + time.Second)
+	for _, id := range []string{"zone-a-1", "zone-c-1"} {
+		instance := ringDesc.Ingesters[id]
+		instance.Timestamp = kvClient.lastUpdate.Unix()
+		ringDesc.Ingesters[id] = instance
+	}
+
+	// A subring held across the poll compares its copied heartbeats with the time they were read.
+	set, err = subring.Get(0, Write, nil, nil, nil)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"zone-b-1", "zone-c-1"}, set.GetAddresses())
+
+	// A subring returned from the cache after the poll has the new heartbeats and time.
+	set, err = ring.ShuffleShard("user", 3).Get(0, Write, nil, nil, nil)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"zone-a-1", "zone-c-1"}, set.GetAddresses())
+}
+
 func TestRing_ShuffleShardWithReadOnlyIngesters(t *testing.T) {
 	g := NewRandomTokenGenerator()
 

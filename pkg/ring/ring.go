@@ -199,6 +199,10 @@ type Ring struct {
 	// When did a set of instances change the last time (instance changing state or heartbeat is ignored for this timestamp).
 	lastTopologyChange time.Time
 
+	// Set only on a subring: the KV store's last update time when the subring copied its
+	// instances from the parent ring. Heartbeat checks compare the copied heartbeats with it.
+	storageLastUpdate time.Time
+
 	// List of zones for which there's at least 1 instance in the ring. This list is guaranteed
 	// to be sorted alphabetically.
 	ringZones         []string
@@ -415,6 +419,14 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	r.updateRingMetrics(rc)
 }
 
+// lastUpdateTime returns the time to compare heartbeats with. It must be called with r.mtx held.
+func (r *Ring) lastUpdateTime() time.Time {
+	if !r.storageLastUpdate.IsZero() {
+		return r.storageLastUpdate
+	}
+	return r.KVClient.LastUpdateTime(r.key)
+}
+
 // Get returns n (or more) instances which form the replicas for the given key.
 // This implementation guarantees:
 // - Stability: given the same ring, two invocations returns the same set for same operation.
@@ -494,7 +506,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 		instances = append(instances, instance)
 	}
 
-	healthyInstances, maxFailure, err := r.strategy.Filter(instances, op, r.cfg.ReplicationFactor, r.cfg.HeartbeatTimeout, r.cfg.ZoneAwarenessEnabled, r.KVClient.LastUpdateTime(r.key))
+	healthyInstances, maxFailure, err := r.strategy.Filter(instances, op, r.cfg.ReplicationFactor, r.cfg.HeartbeatTimeout, r.cfg.ZoneAwarenessEnabled, r.lastUpdateTime())
 	if err != nil {
 		return ReplicationSet{}, err
 	}
@@ -514,7 +526,7 @@ func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
-	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
+	storageLastUpdate := r.lastUpdateTime()
 	instances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
 	for _, instance := range r.ringDesc.Ingesters {
 		if r.IsHealthy(&instance, op, storageLastUpdate) {
@@ -538,7 +550,7 @@ func (r *Ring) GetAllInstanceDescs(op Operation) ([]InstanceDesc, []InstanceDesc
 	}
 	healthyInstances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
 	unhealthyInstances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
-	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
+	storageLastUpdate := r.lastUpdateTime()
 	for _, instance := range r.ringDesc.Ingesters {
 		if r.IsHealthy(&instance, op, storageLastUpdate) {
 			healthyInstances = append(healthyInstances, instance)
@@ -559,7 +571,7 @@ func (r *Ring) GetInstanceDescsForOperation(op Operation) (map[string]InstanceDe
 		return map[string]InstanceDesc{}, ErrEmptyRing
 	}
 
-	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
+	storageLastUpdate := r.lastUpdateTime()
 	instanceDescs := make(map[string]InstanceDesc, 0)
 	for id, instance := range r.ringDesc.Ingesters {
 		if r.IsHealthy(&instance, op, storageLastUpdate) {
@@ -582,7 +594,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	// Build the initial replication set, excluding unhealthy instances.
 	healthyInstances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
 	zoneFailures := make(map[string]struct{})
-	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
+	storageLastUpdate := r.lastUpdateTime()
 
 	for _, instance := range r.ringDesc.Ingesters {
 		if r.IsHealthy(&instance, op, storageLastUpdate) {
@@ -734,7 +746,7 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 
 	for _, instance := range r.ringDesc.Ingesters {
 		s := instance.State.String()
-		if !r.IsHealthy(&instance, Reporting, r.KVClient.LastUpdateTime(r.key)) {
+		if !r.IsHealthy(&instance, Reporting, r.lastUpdateTime()) {
 			s = unhealthy
 		}
 		if _, ok := numByStateByZone[s]; !ok {
@@ -997,6 +1009,8 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 
 		// For caching to work, remember this value.
 		lastTopologyChange: r.lastTopologyChange,
+
+		storageLastUpdate: r.lastUpdateTime(),
 	}, shuffleShardExpiry
 }
 
@@ -1067,6 +1081,7 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int, lookbackPer
 		cachedIng.Timestamp = ing.Timestamp
 		subring.ringDesc.Ingesters[name] = cachedIng
 	}
+	subring.storageLastUpdate = r.lastUpdateTime()
 	return subring
 }
 

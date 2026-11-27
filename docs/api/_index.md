@@ -981,6 +981,8 @@ The following limits can be modified via the API:
 
 Overrides are validated against hard limits defined in the runtime configuration file. If a requested override exceeds the hard limit for the tenant, the request will be rejected with a 400 status code.
 
+The merged limits of the tenant are also validated with the same checks used when loading the runtime configuration. If the validation fails, the request will be rejected with a 400 status code.
+
 ## Store-gateway
 
 ### Store-gateway ring status

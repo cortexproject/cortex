@@ -174,6 +174,44 @@ func TestOverridesAPIWithRunningCortex(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	})
 
+	t.Run("POST overrides failing limits validation", func(t *testing.T) {
+		// max_global_series_per_user requires shard-by-all-labels, which is disabled by default.
+		invalidOverrides := map[string]interface{}{
+			"max_global_series_per_user": 10000,
+		}
+		requestBody, err := json.Marshal(invalidOverrides)
+		require.NoError(t, err)
+
+		req, err := http.NewRequest("POST", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", bytes.NewReader(requestBody))
+		require.NoError(t, err)
+		req.Header.Set("X-Scope-OrgID", "user1")
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+		// The runtime config must be left unchanged.
+		req, err = http.NewRequest("GET", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", nil)
+		require.NoError(t, err)
+		req.Header.Set("X-Scope-OrgID", "user1")
+
+		resp, err = http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		var savedOverrides map[string]interface{}
+		err = json.NewDecoder(resp.Body).Decode(&savedOverrides)
+		require.NoError(t, err)
+
+		assert.Equal(t, float64(5000), savedOverrides["ingestion_rate"])
+		assert.Equal(t, float64(0), savedOverrides["max_global_series_per_user"])
+	})
+
 	t.Run("DELETE overrides", func(t *testing.T) {
 		req, err := http.NewRequest("DELETE", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", nil)
 		require.NoError(t, err)
@@ -223,7 +261,11 @@ func TestOverridesAPIHardLimits(t *testing.T) {
 	}
 	uploadRuntimeConfig(t, minio, runtimeConfig)
 
-	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-hard-limits", defaultArgsOverrides(minio), "")
+	// max_global_series_per_user is rejected by the limits validation unless shard-by-all-labels is enabled.
+	flags := e2e.MergeFlags(defaultArgsOverrides(minio), map[string]string{
+		"-distributor.shard-by-all-labels": "true",
+	})
+	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-hard-limits", flags, "")
 	require.NoError(t, s.StartAndWaitReady(cortexSvc))
 
 	t.Run("POST overrides within hard limits", func(t *testing.T) {

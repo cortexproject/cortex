@@ -16,16 +16,7 @@ import (
 	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 )
 
-var parquetTestFiles = []string{
-	"0.labels.parquet",
-	"0.chunks.parquet",
-	"1.labels.parquet",
-	"nested/2.chunks.parquet",
-	cortex_parquet.ConverterMarkerFileName,
-	cortex_parquet.NoConvertMarkerFileName,
-}
-
-func uploadBlockWithParquetFiles(t *testing.T, bkt objstore.Bucket, id ulid.ULID) {
+func uploadBlockWithParquetFiles(t *testing.T, bkt objstore.Bucket, id ulid.ULID, parquetFiles []string) {
 	t.Helper()
 
 	var meta metadata.Meta
@@ -42,7 +33,7 @@ func uploadBlockWithParquetFiles(t *testing.T, bkt objstore.Bucket, id ulid.ULID
 		block.IndexFilename: []byte("index"),
 		"chunks/000001":     []byte("chunk"),
 	}
-	for _, name := range parquetTestFiles {
+	for _, name := range parquetFiles {
 		files[name] = []byte("parquet")
 	}
 
@@ -55,7 +46,15 @@ func TestParquetFilteredBucket_Iter(t *testing.T) {
 	ctx := context.Background()
 	inmem := objstore.NewInMemBucket()
 	id := ulid.MustNew(1, nil)
-	uploadBlockWithParquetFiles(t, inmem, id)
+	parquetFiles := []string{
+		"0.labels.parquet",
+		"0.chunks.parquet",
+		"1.labels.parquet",
+		"nested/2.chunks.parquet",
+		cortex_parquet.ConverterMarkerFileName,
+		cortex_parquet.NoConvertMarkerFileName,
+	}
+	uploadBlockWithParquetFiles(t, inmem, id, parquetFiles)
 
 	filtered := newParquetFilteredBucket(objstore.WithNoopInstr(inmem))
 
@@ -70,12 +69,12 @@ func TestParquetFilteredBucket_Iter(t *testing.T) {
 
 	// Control: the unfiltered bucket lists the parquet files.
 	unfiltered := listRecursive(inmem)
-	for _, name := range parquetTestFiles {
+	for _, name := range parquetFiles {
 		require.Contains(t, unfiltered, id.String()+"/"+name)
 	}
 
 	got := listRecursive(filtered)
-	for _, name := range parquetTestFiles {
+	for _, name := range parquetFiles {
 		require.NotContains(t, got, id.String()+"/"+name)
 	}
 	require.Contains(t, got, id.String()+"/"+block.MetaFilename)
@@ -88,7 +87,7 @@ func TestParquetFilteredBucket_Iter(t *testing.T) {
 		gotAttrs = append(gotAttrs, attrs.Name)
 		return nil
 	}, objstore.WithRecursiveIter()))
-	for _, name := range parquetTestFiles {
+	for _, name := range parquetFiles {
 		require.NotContains(t, gotAttrs, id.String()+"/"+name)
 	}
 	require.Contains(t, gotAttrs, id.String()+"/"+block.IndexFilename)
@@ -98,11 +97,19 @@ func TestParquetFilteredBucket_ReadsAreNotFiltered(t *testing.T) {
 	ctx := context.Background()
 	inmem := objstore.NewInMemBucket()
 	id := ulid.MustNew(1, nil)
-	uploadBlockWithParquetFiles(t, inmem, id)
+	parquetFiles := []string{
+		"0.labels.parquet",
+		"0.chunks.parquet",
+		"1.labels.parquet",
+		"nested/2.chunks.parquet",
+		cortex_parquet.ConverterMarkerFileName,
+		cortex_parquet.NoConvertMarkerFileName,
+	}
+	uploadBlockWithParquetFiles(t, inmem, id, parquetFiles)
 
 	filtered := newParquetFilteredBucket(objstore.WithNoopInstr(inmem))
 
-	for _, name := range parquetTestFiles {
+	for _, name := range parquetFiles {
 		exists, err := filtered.Exists(ctx, id.String()+"/"+name)
 		require.NoError(t, err)
 		require.True(t, exists, name)
@@ -123,7 +130,15 @@ func TestParquetFilteredBucket_BlockDownloadSkipsParquetFiles(t *testing.T) {
 	ctx := context.Background()
 	inmem := objstore.NewInMemBucket()
 	id := ulid.MustNew(1, nil)
-	uploadBlockWithParquetFiles(t, inmem, id)
+	parquetFiles := []string{
+		"0.labels.parquet",
+		"0.chunks.parquet",
+		"1.labels.parquet",
+		"nested/2.chunks.parquet",
+		cortex_parquet.ConverterMarkerFileName,
+		cortex_parquet.NoConvertMarkerFileName,
+	}
+	uploadBlockWithParquetFiles(t, inmem, id, parquetFiles)
 
 	// Control: downloading from the unfiltered bucket pulls the parquet files.
 	controlDir := t.TempDir()
@@ -139,7 +154,7 @@ func TestParquetFilteredBucket_BlockDownloadSkipsParquetFiles(t *testing.T) {
 	require.FileExists(t, filepath.Join(dst, block.IndexFilename))
 	require.FileExists(t, filepath.Join(dst, block.ChunksDirname, "000001"))
 
-	for _, name := range parquetTestFiles {
+	for _, name := range parquetFiles {
 		require.NoFileExists(t, filepath.Join(dst, name))
 	}
 }

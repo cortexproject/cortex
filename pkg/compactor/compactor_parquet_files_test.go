@@ -79,8 +79,16 @@ func TestCompactor_ShouldNotDownloadParquetFilesWhenCompacting(t *testing.T) {
 	}
 
 	// Put the parquet converter output next to each block.
+	parquetFiles := []string{
+		"0.labels.parquet",
+		"0.chunks.parquet",
+		"1.labels.parquet",
+		"nested/2.chunks.parquet",
+		cortex_parquet.ConverterMarkerFileName,
+		cortex_parquet.NoConvertMarkerFileName,
+	}
 	for _, id := range blocks {
-		for _, name := range parquetTestFiles {
+		for _, name := range parquetFiles {
 			require.NoError(t, bucketClient.Upload(context.Background(), path.Join("user-1", id.String(), name), strings.NewReader("parquet")))
 		}
 	}

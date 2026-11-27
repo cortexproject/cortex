@@ -3820,6 +3820,13 @@
           "type": "number",
           "x-cli-flag": "compactor.compaction-concurrency"
         },
+        "compaction_drain_timeout": {
+          "default": "0s",
+          "description": "How long to let a compaction that is already running finish once shutdown has been requested, before cancelling it. As soon as shutdown is requested the compactor stops planning new compaction groups and stops picking up further tenants, regardless of this setting. 0 cancels the running compaction immediately, discarding the work it has done so far. A compaction is only allowed to finish if the process is given at least this long to terminate, so this value should be below the deployment's termination grace period.",
+          "type": "string",
+          "x-cli-flag": "compactor.compaction-drain-timeout",
+          "x-format": "duration"
+        },
         "compaction_interval": {
           "default": "1h0m0s",
           "description": "The frequency at which the compaction runs",

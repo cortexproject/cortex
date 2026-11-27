@@ -34,6 +34,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
+	"go.uber.org/atomic"
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -1628,6 +1629,11 @@ func prepareConfig() Config {
 }
 
 func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.InstrumentedBucket, limits *validation.Limits) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer) {
+	return prepareWithGrouperFactory(t, compactorCfg, bucketClient, limits, nil)
+}
+
+// A nil grouperFactory keeps the factory the sharding strategy selects.
+func prepareWithGrouperFactory(t *testing.T, compactorCfg Config, bucketClient objstore.InstrumentedBucket, limits *validation.Limits, grouperFactory BlocksGrouperFactory) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer) {
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
 	storageCfg.BucketStore.BlockDiscoveryStrategy = string(cortex_tsdb.RecursiveDiscovery)
@@ -1657,6 +1663,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Instrument
 	}
 
 	blocksCompactorFactory := func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, PlannerFactory, error) {
+		tsdbCompactor.ctx = ctx
 		return tsdbCompactor,
 			func(ctx context.Context, bkt objstore.InstrumentedBucket, _ log.Logger, _ Config, noCompactMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler, _ string, _ prometheus.Counter, _ prometheus.Counter, _ *compactorMetrics, _ *block.IgnoreDeletionMarkFilter) compact.Planner {
 				tsdbPlanner.noCompactMarkFilters = append(tsdbPlanner.noCompactMarkFilters, noCompactMarkFilter)
@@ -1666,9 +1673,12 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Instrument
 	}
 
 	var blocksGrouperFactory BlocksGrouperFactory
-	if compactorCfg.ShardingStrategy == util.ShardingStrategyShuffle {
+	switch {
+	case grouperFactory != nil:
+		blocksGrouperFactory = grouperFactory
+	case compactorCfg.ShardingStrategy == util.ShardingStrategyShuffle:
 		blocksGrouperFactory = ShuffleShardingGrouperFactory
-	} else {
+	default:
 		blocksGrouperFactory = DefaultBlocksGrouperFactory
 	}
 
@@ -1680,6 +1690,9 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Instrument
 
 type tsdbCompactorMock struct {
 	mock.Mock
+
+	// A real TSDB compactor checks the context it was built with while merging.
+	ctx context.Context
 }
 
 func (m *tsdbCompactorMock) Plan(dir string) ([]string, error) {
@@ -1930,7 +1943,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	// Run a compaction cycle on the first compactor: it is alone in the ring, so
 	// it owns (and syncs) all the users.
-	c1.compactUsers(context.Background())
+	c1.compactUsers(context.Background(), context.Background())
 	require.Equal(t, numUsers, len(c1.listTenantsWithMetaSyncDirectories()))
 
 	require.NoError(t, os.Mkdir(c1.metaSyncDirForUser("new-user"), 0600))
@@ -1960,14 +1973,14 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	// Run a compaction cycle on the second compactor: with pinned tokens it owns
 	// exactly half of the users and creates a meta-sync directory for each of them.
-	c2.compactUsers(context.Background())
+	c2.compactUsers(context.Background(), context.Background())
 
 	// Let's check how many users second compactor has.
 	c2Users := len(c2.listTenantsWithMetaSyncDirectories())
 	require.Equal(t, numUsers/2, c2Users)
 
 	// Force new compaction cycle on first compactor. It will run the cleanup of un-owned users at the end of compaction cycle.
-	c1.compactUsers(context.Background())
+	c1.compactUsers(context.Background(), context.Background())
 	c1Users := len(c1.listTenantsWithMetaSyncDirectories())
 
 	// Now compactor 1 should have cleaned the sync files of the users it no longer
@@ -2069,6 +2082,328 @@ func TestCompactor_ShouldNotTreatInterruptionsAsErrors(t *testing.T) {
 	lines := strings.Split(logs.String(), "\n")
 	require.Contains(t, lines, `level=info component=compactor msg="interrupting compaction of user blocks" user=user-1`)
 	require.NotContains(t, logs.String(), `level=error`)
+}
+
+func TestCompactor_ShouldLetRunningCompactionFinishOnShutdownWhenDrainTimeoutIsSet(t *testing.T) {
+	bucketClient := objstore.WithNoopInstr(objstore.NewInMemBucket())
+	id := ulid.MustNew(ulid.Now(), rand.Reader)
+	require.NoError(t, bucketClient.Upload(context.Background(), "user-1/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+
+	createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
+	createTSDBBlock(t, bucketClient, "user-1", 20, 30, map[string]string{"__name__": "Teste"})
+
+	cfg := prepareConfig()
+	cfg.CompactionDrainTimeout = time.Minute
+
+	c, _, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient, nil)
+
+	planCalled := make(chan struct{})
+	releasePlan := make(chan struct{})
+	var planCtxErr error
+	var once sync.Once
+
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil).Run(func(args mock.Arguments) {
+		once.Do(func() {
+			close(planCalled)
+			<-releasePlan
+			planCtxErr = args.Get(0).(context.Context).Err()
+		})
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+
+	// Cancelling the start context cancels the service context synchronously.
+	<-planCalled
+	cancel()
+	close(releasePlan)
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+
+	assert.NoError(t, planCtxErr)
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+		# TYPE cortex_compactor_runs_completed_total counter
+		# HELP cortex_compactor_runs_completed_total Total number of compaction runs successfully completed.
+		cortex_compactor_runs_completed_total 1
+
+		# TYPE cortex_compactor_runs_interrupted_total counter
+		# HELP cortex_compactor_runs_interrupted_total Total number of compaction runs interrupted.
+		cortex_compactor_runs_interrupted_total 0
+
+		# TYPE cortex_compactor_runs_failed_total counter
+		# HELP cortex_compactor_runs_failed_total Total number of compaction runs failed.
+		cortex_compactor_runs_failed_total 0
+	`),
+		"cortex_compactor_runs_completed_total",
+		"cortex_compactor_runs_interrupted_total",
+		"cortex_compactor_runs_failed_total",
+	))
+}
+
+func TestCompactor_ShouldCancelRunningCompactionWhenDrainTimeoutExpires(t *testing.T) {
+	bucketClient := objstore.WithNoopInstr(objstore.NewInMemBucket())
+	id := ulid.MustNew(ulid.Now(), rand.Reader)
+	require.NoError(t, bucketClient.Upload(context.Background(), "user-1/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+
+	createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
+	createTSDBBlock(t, bucketClient, "user-1", 20, 30, map[string]string{"__name__": "Teste"})
+
+	cfg := prepareConfig()
+	cfg.CompactionDrainTimeout = 100 * time.Millisecond
+
+	c, _, tsdbPlanner, _, _ := prepare(t, cfg, bucketClient, nil)
+
+	planCalled := make(chan struct{})
+	planCtxErr := make(chan error, 1)
+	var once sync.Once
+
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil).Run(func(args mock.Arguments) {
+		once.Do(func() {
+			planCtx := args.Get(0).(context.Context)
+			close(planCalled)
+			select {
+			case <-planCtx.Done():
+			case <-time.After(10 * time.Second):
+			}
+			planCtxErr <- planCtx.Err()
+		})
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+
+	<-planCalled
+	cancel()
+
+	assert.Equal(t, context.Canceled, <-planCtxErr)
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+}
+
+// Stands in for the sharding groupers, which produce several groups per pass.
+type duplicatingGrouper struct {
+	grouper compact.Grouper
+}
+
+func (g *duplicatingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) ([]*compact.Group, error) {
+	groups, err := g.grouper.Groups(blocks)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]*compact.Group, 0, len(groups)*2)
+	out = append(out, groups...)
+	out = append(out, groups...)
+	return out, nil
+}
+
+func TestCompactor_ShouldStopPlanningNewGroupsOnceShutdownIsRequested(t *testing.T) {
+	bucketClient := objstore.WithNoopInstr(objstore.NewInMemBucket())
+	id := ulid.MustNew(ulid.Now(), rand.Reader)
+	require.NoError(t, bucketClient.Upload(context.Background(), "user-1/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+
+	b1 := createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
+	b2 := createTSDBBlock(t, bucketClient, "user-1", 20, 30, map[string]string{"__name__": "Teste"})
+
+	cfg := prepareConfig()
+	cfg.CompactionDrainTimeout = 3 * time.Second
+
+	c, tsdbCompactor, tsdbPlanner, _, registry := prepareWithGrouperFactory(t, cfg, bucketClient, nil, func(ctx context.Context, cfg Config, bkt objstore.InstrumentedBucket, logger log.Logger, blocksMarkedForNoCompact prometheus.Counter, blockVisitMarkerReadFailed prometheus.Counter, blockVisitMarkerWriteFailed prometheus.Counter, syncerMetrics *compact.SyncerMetrics, compactorMetrics *compactorMetrics, r *ring.Ring, ringLifecycler *ring.Lifecycler, limit Limits, userID string, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ingestionReplicationFactor int) compact.Grouper {
+		return &duplicatingGrouper{
+			grouper: DefaultBlocksGrouperFactory(ctx, cfg, bkt, logger, blocksMarkedForNoCompact, blockVisitMarkerReadFailed, blockVisitMarkerWriteFailed, syncerMetrics, compactorMetrics, r, ringLifecycler, limit, userID, noCompactionMarkFilter, ingestionReplicationFactor),
+		}
+	})
+
+	// An empty compaction result makes thanos ask for another pass.
+	tsdbCompactor.On("CompactWithBlockPopulator", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]ulid.ULID{}, nil)
+
+	planCalled := make(chan struct{})
+	releasePlan := make(chan struct{})
+	var once sync.Once
+
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{
+		{
+			ULID:    b1,
+			MinTime: 10,
+			MaxTime: 20,
+			// Non-zero samples stop thanos marking the sources for deletion.
+			Stats: tsdb.BlockStats{NumSamples: 1},
+		},
+		{
+			ULID:    b2,
+			MinTime: 20,
+			MaxTime: 30,
+			Stats:   tsdb.BlockStats{NumSamples: 1},
+		},
+	}, nil).Run(func(mock.Arguments) {
+		once.Do(func() {
+			close(planCalled)
+			<-releasePlan
+		})
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+
+	<-planCalled
+	cancel()
+	close(releasePlan)
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+
+	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 1)
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+		# TYPE cortex_compactor_runs_completed_total counter
+		# HELP cortex_compactor_runs_completed_total Total number of compaction runs successfully completed.
+		cortex_compactor_runs_completed_total 1
+
+		# TYPE cortex_compactor_runs_interrupted_total counter
+		# HELP cortex_compactor_runs_interrupted_total Total number of compaction runs interrupted.
+		cortex_compactor_runs_interrupted_total 0
+	`),
+		"cortex_compactor_runs_completed_total",
+		"cortex_compactor_runs_interrupted_total",
+	))
+}
+
+func TestCompactor_ShouldNotCancelTheMergeOnShutdownWhenDrainTimeoutIsSet(t *testing.T) {
+	bucketClient := objstore.WithNoopInstr(objstore.NewInMemBucket())
+	id := ulid.MustNew(ulid.Now(), rand.Reader)
+	require.NoError(t, bucketClient.Upload(context.Background(), "user-1/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+
+	b1 := createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
+	b2 := createTSDBBlock(t, bucketClient, "user-1", 20, 30, map[string]string{"__name__": "Teste"})
+
+	cfg := prepareConfig()
+	cfg.CompactionDrainTimeout = time.Minute
+
+	c, tsdbCompactor, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient, nil)
+
+	mergeCalled := make(chan struct{})
+	releaseMerge := make(chan struct{})
+	var mergeCtxErr error
+	var once sync.Once
+
+	tsdbCompactor.On("CompactWithBlockPopulator", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]ulid.ULID{}, nil).Run(func(mock.Arguments) {
+		once.Do(func() {
+			close(mergeCalled)
+			<-releaseMerge
+			mergeCtxErr = tsdbCompactor.ctx.Err()
+		})
+	})
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{
+		{
+			ULID:    b1,
+			MinTime: 10,
+			MaxTime: 20,
+			Stats:   tsdb.BlockStats{NumSamples: 1},
+		},
+		{
+			ULID:    b2,
+			MinTime: 20,
+			MaxTime: 30,
+			Stats:   tsdb.BlockStats{NumSamples: 1},
+		},
+	}, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+
+	<-mergeCalled
+	cancel()
+	close(releaseMerge)
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+
+	assert.NoError(t, mergeCtxErr)
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+		# TYPE cortex_compactor_runs_completed_total counter
+		# HELP cortex_compactor_runs_completed_total Total number of compaction runs successfully completed.
+		cortex_compactor_runs_completed_total 1
+	`),
+		"cortex_compactor_runs_completed_total",
+	))
+}
+
+type countingGrouper struct {
+	calls   *atomic.Int64
+	grouper compact.Grouper
+}
+
+func (g *countingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) ([]*compact.Group, error) {
+	g.calls.Add(1)
+	return g.grouper.Groups(blocks)
+}
+
+func TestCompactor_ShouldStopBuildingGroupsOnceShutdownIsRequested(t *testing.T) {
+	bucketClient := objstore.WithNoopInstr(objstore.NewInMemBucket())
+	id := ulid.MustNew(ulid.Now(), rand.Reader)
+	require.NoError(t, bucketClient.Upload(context.Background(), "user-1/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+
+	b1 := createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
+	b2 := createTSDBBlock(t, bucketClient, "user-1", 20, 30, map[string]string{"__name__": "Teste"})
+
+	cfg := prepareConfig()
+	cfg.CompactionDrainTimeout = 3 * time.Second
+
+	var groupsCalls atomic.Int64
+	grouperFactory := func(ctx context.Context, cfg Config, bkt objstore.InstrumentedBucket, logger log.Logger, blocksMarkedForNoCompact prometheus.Counter, blockVisitMarkerReadFailed prometheus.Counter, blockVisitMarkerWriteFailed prometheus.Counter, syncerMetrics *compact.SyncerMetrics, compactorMetrics *compactorMetrics, r *ring.Ring, ringLifecycler *ring.Lifecycler, limit Limits, userID string, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ingestionReplicationFactor int) compact.Grouper {
+		return &countingGrouper{
+			calls:   &groupsCalls,
+			grouper: DefaultBlocksGrouperFactory(ctx, cfg, bkt, logger, blocksMarkedForNoCompact, blockVisitMarkerReadFailed, blockVisitMarkerWriteFailed, syncerMetrics, compactorMetrics, r, ringLifecycler, limit, userID, noCompactionMarkFilter, ingestionReplicationFactor),
+		}
+	}
+
+	c, tsdbCompactor, tsdbPlanner, _, registry := prepareWithGrouperFactory(t, cfg, bucketClient, nil, grouperFactory)
+
+	// An empty compaction result makes thanos run another pass over the tenant.
+	tsdbCompactor.On("CompactWithBlockPopulator", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]ulid.ULID{}, nil)
+
+	planCalled := make(chan struct{})
+	releasePlan := make(chan struct{})
+	var once sync.Once
+
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{
+		{
+			ULID:    b1,
+			MinTime: 10,
+			MaxTime: 20,
+			Stats:   tsdb.BlockStats{NumSamples: 1},
+		},
+		{
+			ULID:    b2,
+			MinTime: 20,
+			MaxTime: 30,
+			Stats:   tsdb.BlockStats{NumSamples: 1},
+		},
+	}, nil).Run(func(mock.Arguments) {
+		once.Do(func() {
+			close(planCalled)
+			<-releasePlan
+		})
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+
+	<-planCalled
+	cancel()
+	close(releasePlan)
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+
+	assert.Equal(t, int64(1), groupsCalls.Load())
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+		# TYPE cortex_compactor_runs_completed_total counter
+		# HELP cortex_compactor_runs_completed_total Total number of compaction runs successfully completed.
+		cortex_compactor_runs_completed_total 1
+	`),
+		"cortex_compactor_runs_completed_total",
+	))
 }
 
 func TestCompactor_ShouldNotFailCompactionIfAccessDeniedErrDuringMetaSync(t *testing.T) {

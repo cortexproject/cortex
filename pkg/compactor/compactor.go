@@ -60,6 +60,7 @@ var (
 	supportedShardingStrategies              = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 	errInvalidShardingStrategy               = errors.New("invalid sharding strategy")
 	errInvalidBlockMergeFanIn                = errors.New("invalid block merge fan-in, the value must not be negative")
+	errInvalidCompactionDrainTimeout         = errors.New("invalid compaction drain timeout, the value must not be negative")
 	errInvalidTenantShardSize                = errors.New("invalid tenant shard size, the value must be greater than 0")
 	supportedCompactionStrategies            = []string{util.CompactionStrategyDefault, util.CompactionStrategyPartitioning}
 	errInvalidCompactionStrategy             = errors.New("invalid compaction strategy")
@@ -269,6 +270,7 @@ type Config struct {
 	CompactionInterval                    time.Duration            `yaml:"compaction_interval"`
 	CompactionRetries                     int                      `yaml:"compaction_retries"`
 	CompactionConcurrency                 int                      `yaml:"compaction_concurrency"`
+	CompactionDrainTimeout                time.Duration            `yaml:"compaction_drain_timeout"`
 	CleanupInterval                       time.Duration            `yaml:"cleanup_interval"`
 	CleanupConcurrency                    int                      `yaml:"cleanup_concurrency"`
 	DeletionDelay                         time.Duration            `yaml:"deletion_delay"`
@@ -333,6 +335,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", time.Hour, "The frequency at which the compaction runs")
 	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction within a single compaction run.")
 	f.IntVar(&cfg.CompactionConcurrency, "compactor.compaction-concurrency", 1, "Max number of concurrent compactions running.")
+	f.DurationVar(&cfg.CompactionDrainTimeout, "compactor.compaction-drain-timeout", 0, "How long to let a compaction that is already running finish once shutdown has been requested, before cancelling it. As soon as shutdown is requested the compactor stops planning new compaction groups and stops picking up further tenants, regardless of this setting. 0 cancels the running compaction immediately, discarding the work it has done so far. A compaction is only allowed to finish if the process is given at least this long to terminate, so this value should be below the deployment's termination grace period.")
 	f.DurationVar(&cfg.CleanupInterval, "compactor.cleanup-interval", 15*time.Minute, "How frequently compactor should run blocks cleanup and maintenance, as well as update the bucket index.")
 	f.IntVar(&cfg.CleanupConcurrency, "compactor.cleanup-concurrency", 20, "Max number of tenants for which blocks cleanup and maintenance should run concurrently.")
 	f.BoolVar(&cfg.ShardingEnabled, "compactor.sharding-enabled", false, "Shard tenants across multiple compactor instances. Sharding is required if you run multiple compactor instances, in order to coordinate compactions and avoid race conditions leading to the same tenant blocks simultaneously compacted by different instances.")
@@ -389,6 +392,10 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 
 	if cfg.BlockMergeFanIn < 0 {
 		return errInvalidBlockMergeFanIn
+	}
+
+	if cfg.CompactionDrainTimeout < 0 {
+		return errInvalidCompactionDrainTimeout
 	}
 
 	// Make sure a valid sharding strategy is being used
@@ -458,6 +465,9 @@ type Compactor struct {
 
 	// Client used to run operations on the bucket storing blocks.
 	bucketClient objstore.InstrumentedBucket
+
+	compactionCtx    context.Context
+	cancelCompaction context.CancelFunc
 
 	// Ring used for sharding compactions.
 	ringLifecycler         *ring.Lifecycler
@@ -657,23 +667,30 @@ func newCompactor(
 }
 
 // Start the compactor.
-func (c *Compactor) starting(ctx context.Context) error {
+func (c *Compactor) starting(ctx context.Context) (err error) {
 	begin := time.Now()
 	defer func() {
 		c.CompactorStartDurationSeconds.Set(time.Since(begin).Seconds())
 		level.Info(c.logger).Log("msg", "compactor started", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}()
 
-	var err error
+	// The TSDB compactor and the GCS token source keep the context they are
+	// built with, so both are built with the compaction context.
+	c.compactionCtx, c.cancelCompaction = compactionContext(ctx, c.compactorCfg.CompactionDrainTimeout)
+	defer func() {
+		if err != nil {
+			c.cancelCompaction()
+		}
+	}()
 
 	// Create bucket client.
-	c.bucketClient, err = c.bucketClientFactory(ctx)
+	c.bucketClient, err = c.bucketClientFactory(c.compactionCtx)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bucket client")
 	}
 
 	// Create blocks compactor dependencies.
-	c.blocksCompactor, c.blocksPlannerFactory, err = c.blocksCompactorFactory(ctx, c.compactorCfg, c.logger, c.registerer)
+	c.blocksCompactor, c.blocksPlannerFactory, err = c.blocksCompactorFactory(c.compactionCtx, c.compactorCfg, c.logger, c.registerer)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize compactor dependencies")
 	}
@@ -800,6 +817,7 @@ func (c *Compactor) stopping(_ error) error {
 	defer func() {
 		level.Info(c.logger).Log("msg", "compactor stopped", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}()
+	defer c.cancelCompaction()
 
 	ctx := context.Background()
 
@@ -808,6 +826,29 @@ func (c *Compactor) stopping(_ error) error {
 		return services.StopManagerAndAwaitStopped(ctx, c.ringSubservices)
 	}
 	return nil
+}
+
+// compactionContext detaches from ctx so an in-flight compaction can finish
+// after shutdown, for up to drainTimeout. Zero returns ctx itself.
+func compactionContext(ctx context.Context, drainTimeout time.Duration) (context.Context, context.CancelFunc) {
+	if drainTimeout <= 0 {
+		return ctx, func() {}
+	}
+
+	compactionCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	go func() {
+		select {
+		case <-ctx.Done():
+			select {
+			case <-time.After(drainTimeout):
+			case <-compactionCtx.Done():
+			}
+		case <-compactionCtx.Done():
+		}
+		cancel()
+	}()
+
+	return compactionCtx, cancel
 }
 
 func (c *Compactor) running(ctx context.Context) error {
@@ -828,7 +869,7 @@ func (c *Compactor) running(ctx context.Context) error {
 		return ctx.Err()
 	case <-time.After(time.Duration(rand.Int63n(int64(float64(c.compactorCfg.CompactionInterval) * 0.1)))):
 	}
-	c.compactUsers(ctx)
+	c.compactUsers(ctx, c.compactionCtx)
 
 	ticker := time.NewTicker(c.compactorCfg.CompactionInterval)
 	defer ticker.Stop()
@@ -839,7 +880,7 @@ func (c *Compactor) running(ctx context.Context) error {
 			// Insert jitter right before compaction starts, so that there will always
 			// have jitter even compaction time is longer than CompactionInterval
 			time.Sleep(time.Duration(rand.Int63n(int64(float64(c.compactorCfg.CompactionInterval) * 0.1))))
-			c.compactUsers(ctx)
+			c.compactUsers(ctx, c.compactionCtx)
 		case <-ctx.Done():
 			return nil
 		case err := <-c.ringSubservicesWatcher.Chan():
@@ -848,7 +889,9 @@ func (c *Compactor) running(ctx context.Context) error {
 	}
 }
 
-func (c *Compactor) compactUsers(ctx context.Context) {
+// ctx decides whether another tenant is picked up; compactionCtx runs the
+// compaction and can outlive ctx by -compactor.compaction-drain-timeout.
+func (c *Compactor) compactUsers(ctx, compactionCtx context.Context) {
 	succeeded := false
 	interrupted := false
 	compactionErrorCount := 0
@@ -934,9 +977,9 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 
 		level.Info(c.logger).Log("msg", "starting compaction of user blocks", "user", userID)
 
-		if err = c.compactUserWithRetries(ctx, userID); err != nil {
+		if err = c.compactUserWithRetries(compactionCtx, ctx, userID); err != nil {
 			// TODO: patch thanos error types to support errors.Is(err, context.Canceled) here
-			if ctx.Err() != nil && ctx.Err() == context.Canceled {
+			if compactionCtx.Err() != nil && compactionCtx.Err() == context.Canceled {
 				interrupted = true
 				level.Info(c.logger).Log("msg", "interrupting compaction of user blocks", "user", userID)
 				return
@@ -981,7 +1024,7 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 	succeeded = true
 }
 
-func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) error {
+func (c *Compactor) compactUserWithRetries(ctx, shutdownCtx context.Context, userID string) error {
 	var lastErr error
 
 	retries := backoff.New(ctx, backoff.Config{
@@ -991,7 +1034,7 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 	})
 
 	for retries.Ongoing() {
-		lastErr = c.compactUser(ctx, userID)
+		lastErr = c.compactUser(ctx, shutdownCtx, userID)
 		if lastErr == nil {
 			return nil
 		}
@@ -1021,7 +1064,35 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 	return lastErr
 }
 
-func (c *Compactor) compactUser(ctx context.Context, userID string) error {
+// shutdownGatedGrouper stops building new groups at shutdown. Under the
+// partitioning strategy, building a group claims its partition in the bucket.
+type shutdownGatedGrouper struct {
+	shutdownCtx context.Context
+	grouper     compact.Grouper
+}
+
+func (g *shutdownGatedGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) ([]*compact.Group, error) {
+	if g.shutdownCtx.Err() != nil {
+		return nil, nil
+	}
+	return g.grouper.Groups(blocks)
+}
+
+// shutdownGatedPlanner stops planning groups already queued at shutdown. An
+// empty plan is a group with nothing to do and does not ask for a rerun.
+type shutdownGatedPlanner struct {
+	shutdownCtx context.Context
+	planner     compact.Planner
+}
+
+func (p *shutdownGatedPlanner) Plan(ctx context.Context, metasByMinTime []*metadata.Meta, errChan chan error, extensions any) ([]*metadata.Meta, error) {
+	if p.shutdownCtx.Err() != nil {
+		return nil, nil
+	}
+	return p.planner.Plan(ctx, metasByMinTime, errChan, extensions)
+}
+
+func (c *Compactor) compactUser(ctx, shutdownCtx context.Context, userID string) error {
 	bucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.limits)
 
 	reg := prometheus.NewRegistry()
@@ -1116,11 +1187,18 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 
 	currentCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	planner := c.blocksPlannerFactory(currentCtx, bucket, ulogger, c.compactorCfg, noCompactMarkerFilter, c.ringLifecycler, userID, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed, c.compactorMetrics, ignoreDeletionMarkFilter)
+	grouper := c.blocksGrouperFactory(currentCtx, c.compactorCfg, bucket, ulogger, c.BlocksMarkedForNoCompaction, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed, syncerMetrics, c.compactorMetrics, c.ring, c.ringLifecycler, c.limits, userID, noCompactMarkerFilter, c.ingestionReplicationFactor)
+	if c.compactorCfg.CompactionDrainTimeout > 0 {
+		planner = &shutdownGatedPlanner{shutdownCtx: shutdownCtx, planner: planner}
+		grouper = &shutdownGatedGrouper{shutdownCtx: shutdownCtx, grouper: grouper}
+	}
 	compactor, err := compact.NewBucketCompactorWithCheckerAndCallback(
 		ulogger,
 		syncer,
-		c.blocksGrouperFactory(currentCtx, c.compactorCfg, bucket, ulogger, c.BlocksMarkedForNoCompaction, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed, syncerMetrics, c.compactorMetrics, c.ring, c.ringLifecycler, c.limits, userID, noCompactMarkerFilter, c.ingestionReplicationFactor),
-		c.blocksPlannerFactory(currentCtx, bucket, ulogger, c.compactorCfg, noCompactMarkerFilter, c.ringLifecycler, userID, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed, c.compactorMetrics, ignoreDeletionMarkFilter),
+		grouper,
+		planner,
 		c.blocksCompactor,
 		c.blockDeletableCheckerFactory(currentCtx, bucket, ulogger),
 		c.compactionLifecycleCallbackFactory(currentCtx, bucket, ulogger, c.compactorCfg.MetaSyncConcurrency, c.compactorCfg.BlockMergeFanIn, c.compactDirForUser(userID), userID, c.compactorMetrics),

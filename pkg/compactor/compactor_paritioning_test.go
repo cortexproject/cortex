@@ -1630,7 +1630,7 @@ func TestPartitionCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	// Run a compaction cycle on the first compactor: it is alone in the ring, so
 	// it owns (and syncs) all the users.
-	c1.compactUsers(context.Background())
+	c1.compactUsers(context.Background(), context.Background())
 	require.Equal(t, numUsers, len(c1.listTenantsWithMetaSyncDirectories()))
 
 	require.NoError(t, os.Mkdir(c1.metaSyncDirForUser("new-user"), 0600))
@@ -1660,14 +1660,14 @@ func TestPartitionCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	// Run a compaction cycle on the second compactor: with pinned tokens it owns
 	// exactly half of the users and creates a meta-sync directory for each of them.
-	c2.compactUsers(context.Background())
+	c2.compactUsers(context.Background(), context.Background())
 
 	// Let's check how many users second compactor has.
 	c2Users := len(c2.listTenantsWithMetaSyncDirectories())
 	require.Equal(t, numUsers/2, c2Users)
 
 	// Force new compaction cycle on first compactor. It will run the cleanup of un-owned users at the end of compaction cycle.
-	c1.compactUsers(context.Background())
+	c1.compactUsers(context.Background(), context.Background())
 	c1Users := len(c1.listTenantsWithMetaSyncDirectories())
 
 	// Now compactor 1 should have cleaned the sync files of the users it no longer

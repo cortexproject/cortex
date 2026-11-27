@@ -802,8 +802,13 @@ func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, 
 	if parquetEnabled {
 		c.tenantParquetBlocks.WithLabelValues(userID).Set(float64(len(idx.ParquetBlocks())))
 		remainingBlocksToConvert := 0
+		now := time.Now().UnixMilli()
 		for _, b := range idx.NonParquetBlocks() {
-			if cortex_parquet.ShouldConvertBlockToParquet(b.MinTime, b.MaxTime, c.cfg.BlockRanges) {
+			hasNoCompactMark := func() bool {
+				_, ok := blocksMarkedForNoCompaction[b.ID]
+				return ok
+			}
+			if cortex_parquet.ShouldConvertBlockToParquet(b.MinTime, b.MaxTime, now, c.cfg.BlockRanges, hasNoCompactMark) {
 				remainingBlocksToConvert++
 			}
 		}

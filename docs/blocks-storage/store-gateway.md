@@ -2237,6 +2237,17 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-ttl
     [parquet_shard_cache_ttl: <duration> | default = 24h]
 
+    # [Experimental] If true, a store-gateway running with
+    # `-blocks-storage.bucket-store.bucket-store-type=parquet` honors projection
+    # hints from the querier and only materializes the requested labels, under
+    # the conditions described in `-querier.honor-projection-hints`. Enable it
+    # on all store-gateways, all in parquet mode, before enabling
+    # `-querier.honor-projection-hints`, and keep both until that flag is
+    # disabled; otherwise the same series can come back from different
+    # store-gateways with different label sets and be counted twice.
+    # CLI flag: -blocks-storage.bucket-store.honor-projection-hints
+    [honor_projection_hints: <boolean> | default = false]
+
     # Maximum number of concurrent goroutines per query applied at each level of
     # parquet processing: shard querying, row group processing, and column
     # materialization. Note: this limit is applied independently at each level,

@@ -165,7 +165,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableParquetQueryable, "querier.enable-parquet-queryable", false, "[Experimental] If true, querier will try to query the parquet files if available.")
 	cfg.ParquetShardCache.RegisterFlagsWithPrefix("querier.", f)
 	f.StringVar(&cfg.ParquetQueryableDefaultBlockStore, "querier.parquet-queryable-default-block-store", string(parquetBlockStore), "[Experimental] Parquet queryable's default block store to query. Valid options are tsdb and parquet. If it is set to tsdb, parquet queryable always fallback to store gateway.")
-	f.BoolVar(&cfg.HonorProjectionHints, "querier.honor-projection-hints", false, "[Experimental] If true, querier will honor projection hints and only materialize requested labels. Today, projection is only effective when Parquet Queryable is enabled. Projection is only applied when not querying mixed block types (parquet and non-parquet) and not querying ingesters.")
+	f.BoolVar(&cfg.HonorProjectionHints, "querier.honor-projection-hints", false, "[Experimental] If true, querier will honor projection hints from the Thanos engine `projection` optimizer and only materialize requested labels. Projection is done by the Parquet Queryable, or by store-gateways in parquet mode with `-blocks-storage.bucket-store.honor-projection-hints`, and only when every queried block was converted to parquet and ingesters are not queried. When store-gateways serve the blocks, enable this flag only after all of them run in parquet mode with that flag enabled, and disable this flag before changing either on any store-gateway.")
 	f.BoolVar(&cfg.DistributedExecEnabled, "querier.distributed-exec-enabled", false, "Experimental: Enables distributed execution of queries by passing logical query plan fragments to downstream components.")
 	f.BoolVar(&cfg.ParquetQueryableFallbackDisabled, "querier.parquet-queryable-fallback-disabled", false, "[Experimental] Disable Parquet queryable to fallback queries to Store Gateway if the block is not available as Parquet files but available in TSDB. Setting this to true will disable the fallback and users can remove Store Gateway. But need to make sure Parquet files are created before it is queryable.")
 	f.BoolVar(&cfg.TimeoutClassificationEnabled, "querier.timeout-classification-enabled", false, "If true, classify query timeouts as 4XX (user error) or 5XX (system error) based on phase timing.")
@@ -548,13 +548,11 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 		return storage.EmptySeriesSet()
 	}
 
-	// Reset projection hints if querying ingesters or projection is not included.
-	// Projection can only be applied when not querying mixed sources (ingester + store).
-	if q.honorProjectionHints {
-		if !sp.ProjectionInclude || q.distributor.UseQueryable(q.now, userID, mint, maxt) {
-			sp.ProjectionLabels = nil
-			sp.ProjectionInclude = false
-		}
+	// Reset projection hints unless the querier honors them, projection is included and ingesters are not queried.
+	// Ingesters always return full label sets, so projected store series could not be merged with them.
+	if !q.honorProjectionHints || !sp.ProjectionInclude || q.distributor.UseQueryable(q.now, userID, mint, maxt) {
+		sp.ProjectionLabels = nil
+		sp.ProjectionInclude = false
 	}
 
 	if len(queriers) == 1 {

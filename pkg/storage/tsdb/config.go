@@ -336,7 +336,8 @@ type BucketStoreConfig struct {
 	// Token bucket configs
 	TokenBucketBytesLimiter TokenBucketBytesLimiterConfig `yaml:"token_bucket_bytes_limiter"`
 	// Parquet shard cache config
-	ParquetShardCache parquetutil.CacheConfig `yaml:",inline"`
+	ParquetShardCache    parquetutil.CacheConfig `yaml:",inline"`
+	HonorProjectionHints bool                    `yaml:"honor_projection_hints"`
 
 	// ParquetQueryConcurrency controls the maximum number of concurrent goroutines
 	// per query at each level of parquet processing: shard querying, row group
@@ -407,6 +408,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MatchersCacheMaxItems, "blocks-storage.bucket-store.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
 	f.IntVar(&cfg.ParquetQueryConcurrency, "blocks-storage.bucket-store.parquet-query-concurrency", 4, "Maximum number of concurrent goroutines per query applied at each level of parquet processing: shard querying, row group processing, and column materialization. Note: this limit is applied independently at each level, so the total goroutines per query can grow multiplicatively (up to N^3 in the worst case).")
 	cfg.ParquetShardCache.RegisterFlagsWithPrefix("blocks-storage.bucket-store.", f)
+	f.BoolVar(&cfg.HonorProjectionHints, "blocks-storage.bucket-store.honor-projection-hints", false, "[Experimental] If true, a store-gateway running with `-blocks-storage.bucket-store.bucket-store-type=parquet` honors projection hints from the querier and only materializes the requested labels, under the conditions described in `-querier.honor-projection-hints`. Enable it on all store-gateways, all in parquet mode, before enabling `-querier.honor-projection-hints`, and keep both until that flag is disabled; otherwise the same series can come back from different store-gateways with different label sets and be counted twice.")
 }
 
 // Validate the config.

@@ -1564,6 +1564,12 @@
               "x-cli-flag": "blocks-storage.bucket-store.consistency-delay",
               "x-format": "duration"
             },
+            "honor_projection_hints": {
+              "default": false,
+              "description": "[Experimental] If true, a store-gateway running with `-blocks-storage.bucket-store.bucket-store-type=parquet` honors projection hints from the querier and only materializes the requested labels, under the conditions described in `-querier.honor-projection-hints`. Enable it on all store-gateways, all in parquet mode, before enabling `-querier.honor-projection-hints`, and keep both until that flag is disabled; otherwise the same series can come back from different store-gateways with different label sets and be counted twice.",
+              "type": "boolean",
+              "x-cli-flag": "blocks-storage.bucket-store.honor-projection-hints"
+            },
             "ignore_blocks_before": {
               "default": "0s",
               "description": "The blocks created before `now() - ignore_blocks_before` will not be synced. 0 to disable.",
@@ -6643,7 +6649,7 @@
         },
         "honor_projection_hints": {
           "default": false,
-          "description": "[Experimental] If true, querier will honor projection hints and only materialize requested labels. Today, projection is only effective when Parquet Queryable is enabled. Projection is only applied when not querying mixed block types (parquet and non-parquet) and not querying ingesters.",
+          "description": "[Experimental] If true, querier will honor projection hints from the Thanos engine `projection` optimizer and only materialize requested labels. Projection is done by the Parquet Queryable, or by store-gateways in parquet mode with `-blocks-storage.bucket-store.honor-projection-hints`, and only when every queried block was converted to parquet and ingesters are not queried. When store-gateways serve the blocks, enable this flag only after all of them run in parquet mode with that flag enabled, and disable this flag before changing either on any store-gateway.",
           "type": "boolean",
           "x-cli-flag": "querier.honor-projection-hints"
         },

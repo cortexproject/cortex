@@ -113,6 +113,7 @@ type Handler struct {
 	queryFetchedSamples *prometheus.CounterVec
 	queryScannedSamples *prometheus.CounterVec
 	queryPeakSamples    *prometheus.HistogramVec
+	queryRangeLength    *prometheus.HistogramVec
 	queryChunkBytes     *prometheus.CounterVec
 	queryDataBytes      *prometheus.CounterVec
 	rejectedQueries     *prometheus.CounterVec
@@ -159,6 +160,14 @@ func NewHandler(cfg HandlerConfig, tenantFederationCfg tenantfederation.Config, 
 		h.queryPeakSamples = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:                            "cortex_query_peak_samples",
 			Help:                            "Highest count of samples considered to execute a query.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+		}, []string{"source", "user"})
+
+		h.queryRangeLength = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "cortex_query_range_length_seconds",
+			Help:                            "Time range (end - start) requested by range queries, in seconds. Includes queries that were rejected or failed.",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
@@ -225,6 +234,9 @@ func (h *Handler) cleanupMetricsForInactiveUser(user string) {
 	}
 	if err := util.DeleteMatchingLabels(h.queryPeakSamples, userLabel); err != nil {
 		level.Warn(h.log).Log("msg", "failed to remove cortex_query_peak_samples metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.queryRangeLength, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_range_length_seconds metric for user", "user", user, "err", err)
 	}
 	if err := util.DeleteMatchingLabels(h.queryChunkBytes, userLabel); err != nil {
 		level.Warn(h.log).Log("msg", "failed to remove cortex_query_fetched_chunks_bytes_total metric for user", "user", user, "err", err)
@@ -515,6 +527,11 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 	f.queryPeakSamples.WithLabelValues(source, userID).Observe(float64(numPeakSamples))
 	f.queryChunkBytes.WithLabelValues(source, userID).Add(float64(numChunkBytes))
 	f.queryDataBytes.WithLabelValues(source, userID).Add(float64(numDataBytes))
+	if strings.HasSuffix(r.URL.Path, "/query_range") {
+		if rangeLength, ok := queryRangeLengthSeconds(queryString); ok {
+			f.queryRangeLength.WithLabelValues(source, userID).Observe(rangeLength)
+		}
+	}
 	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
 
 	var (
@@ -681,6 +698,23 @@ func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer)
 	}
 
 	return r.Form
+}
+
+// queryRangeLengthSeconds returns the time range (end - start) of a range query in seconds.
+// It returns false if start or end is missing or invalid, or if end is before start.
+func queryRangeLengthSeconds(queryString url.Values) (float64, bool) {
+	start, err := util.ParseTime(queryString.Get("start"))
+	if err != nil {
+		return 0, false
+	}
+	end, err := util.ParseTime(queryString.Get("end"))
+	if err != nil {
+		return 0, false
+	}
+	if end < start {
+		return 0, false
+	}
+	return float64(end-start) / 1000, true
 }
 
 func formatQueryString(queryString url.Values) (fields []any) {

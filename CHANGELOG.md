@@ -41,6 +41,7 @@
 * [BUGFIX] Ring: Ignore READONLY ingesters when assigning tokens so the active series remain balanced. #7946
 * [BUGFIX] Distributor: Fix a `panic: send on closed channel` crash during shutdown when `-distributor.num-push-workers` or `-distributor.num-query-workers` is greater than 0. #7964
 * [BUGFIX] Ring: Fix `DoBatch` counting a key more than once when more replicas than the quorum succeed, which in rare cases could hide a write error from a key that did not reach quorum. A distributor push now always waits until every series reaches quorum, so it returns the error of a series that misses quorum, and takes as long as its slowest series to reach quorum. #7975
+* [BUGFIX] Ring: Fix shuffle-sharding subrings treating instances with a stale heartbeat as healthy when using the DynamoDB KV store. #7976
 
 ## 1.22.0 2026-11-19
 

@@ -1022,7 +1022,7 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 }
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
-	bucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.limits)
+	bucket := newParquetFilteredBucket(bucket.NewUserBucketClient(userID, c.bucketClient, c.limits))
 
 	reg := prometheus.NewRegistry()
 

@@ -466,7 +466,7 @@ If you are using a managed memcached service from [Google Cloud](https://cloud.g
 
 If a reverse proxy is used in front of Cortex, it might be difficult to troubleshoot errors. The following 3 settings can be used to log the IP address passed along by the reverse proxy in headers like X-Forwarded-For.
 
-- `-server.log_source_ips_enabled`
+- `-server.log-source-ips-enabled`
 
   Set this to `true` to add logging of the IP when a Forwarded, X-Real-IP or X-Forwarded-For header is used. A field called `sourceIPs` will be added to error logs when data is pushed into Cortex.
 

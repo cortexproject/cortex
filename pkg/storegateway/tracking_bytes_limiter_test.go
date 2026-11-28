@@ -31,6 +31,7 @@ func (m *mockBytesLimiter) Reserved() uint64 {
 func TestRequestDataBytesTracker_Basic(t *testing.T) {
 	t.Run("add delegates to underlying tracker", func(t *testing.T) {
 		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		defer tracker.Stop()
 		reqTracker := newRequestDataBytesTracker(tracker)
 
 		require.NoError(t, reqTracker.Add(100))
@@ -40,6 +41,7 @@ func TestRequestDataBytesTracker_Basic(t *testing.T) {
 
 	t.Run("multiple adds accumulate", func(t *testing.T) {
 		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		defer tracker.Stop()
 		reqTracker := newRequestDataBytesTracker(tracker)
 
 		require.NoError(t, reqTracker.Add(100))
@@ -51,6 +53,7 @@ func TestRequestDataBytesTracker_Basic(t *testing.T) {
 
 	t.Run("release all decrements tracker", func(t *testing.T) {
 		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		defer tracker.Stop()
 		reqTracker := newRequestDataBytesTracker(tracker)
 
 		require.NoError(t, reqTracker.Add(100))
@@ -61,6 +64,7 @@ func TestRequestDataBytesTracker_Basic(t *testing.T) {
 
 	t.Run("release all is idempotent", func(t *testing.T) {
 		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		defer tracker.Stop()
 		reqTracker := newRequestDataBytesTracker(tracker)
 
 		require.NoError(t, reqTracker.Add(100))
@@ -74,6 +78,7 @@ func TestRequestDataBytesTracker_Basic(t *testing.T) {
 
 	t.Run("propagates add error from tracker", func(t *testing.T) {
 		tracker := NewConcurrentDataBytesTracker(50, nil)
+		defer tracker.Stop()
 		reqTracker := newRequestDataBytesTracker(tracker)
 
 		require.NoError(t, reqTracker.Add(30))
@@ -87,6 +92,7 @@ func TestTrackingDataBytesLimiter_Basic(t *testing.T) {
 	t.Run("reserves bytes through inner limiter", func(t *testing.T) {
 		inner := newMockBytesLimiter(1000)
 		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		defer tracker.Stop()
 		reqTracker := newRequestDataBytesTracker(tracker)
 		limiter := newTrackingDataBytesLimiter(inner, reqTracker)
 
@@ -97,6 +103,7 @@ func TestTrackingDataBytesLimiter_Basic(t *testing.T) {
 	t.Run("tracks bytes in request tracker", func(t *testing.T) {
 		inner := newMockBytesLimiter(1000)
 		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		defer tracker.Stop()
 		reqTracker := newRequestDataBytesTracker(tracker)
 		limiter := newTrackingDataBytesLimiter(inner, reqTracker)
 
@@ -107,6 +114,7 @@ func TestTrackingDataBytesLimiter_Basic(t *testing.T) {
 
 	t.Run("multiple limiters share request tracker", func(t *testing.T) {
 		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		defer tracker.Stop()
 		reqTracker := newRequestDataBytesTracker(tracker)
 
 		limiter1 := newTrackingDataBytesLimiter(newMockBytesLimiter(1000), reqTracker)
@@ -126,6 +134,7 @@ func TestTrackingDataBytesLimiter_Basic(t *testing.T) {
 
 func TestRequestDataBytesTracker_PanicRecovery(t *testing.T) {
 	tracker := NewConcurrentDataBytesTracker(10000, nil)
+	defer tracker.Stop()
 
 	func() {
 		reqTracker := newRequestDataBytesTracker(tracker)
@@ -146,6 +155,7 @@ func TestProperty_BytesLimiterIntegration(t *testing.T) {
 
 		inner := newMockBytesLimiter(uint64(100) * 1024 * 1024 * 1024)
 		tracker := NewConcurrentDataBytesTracker(uint64(100)*1024*1024*1024, nil)
+		defer tracker.Stop()
 		reqTracker := newRequestDataBytesTracker(tracker)
 		limiter := newTrackingDataBytesLimiter(inner, reqTracker)
 
@@ -174,6 +184,7 @@ func TestPropertyReserveWithTypePropagatesAddError(t *testing.T) {
 		limit := uint64(rng.Intn(10*1024*1024)) + 1
 
 		tracker := NewConcurrentDataBytesTracker(limit, nil)
+		defer tracker.Stop()
 		reqTracker := newRequestDataBytesTracker(tracker)
 		inner := newMockBytesLimiter(^uint64(0))
 		limiter := newTrackingDataBytesLimiter(inner, reqTracker)
@@ -208,6 +219,7 @@ func TestPropertyReleaseWorksCorrectlyAfterAddError(t *testing.T) {
 		limit := uint64(rng.Intn(1024)) + 1
 
 		tracker := NewConcurrentDataBytesTracker(limit, nil)
+		defer tracker.Stop()
 		reqTracker := newRequestDataBytesTracker(tracker)
 		inner := newMockBytesLimiter(^uint64(0))
 		limiter := newTrackingDataBytesLimiter(inner, reqTracker)

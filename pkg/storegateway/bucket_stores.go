@@ -178,6 +178,15 @@ func newThanosBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy Shardi
 			Help: "Number of tenants synced.",
 		}),
 	}
+
+	// Stop the tracker if the bucket stores can't be created, because the caller
+	// never gets the bucket stores to stop them.
+	defer func() {
+		if err != nil {
+			u.concurrentDataBytesTracker.Stop()
+		}
+	}()
+
 	u.userScanner, err = users.NewScanner(cfg.UsersScanner, bucketClient, logger, reg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create users scanner")
@@ -241,7 +250,10 @@ func (u *ThanosBucketStores) SyncBlocks(ctx context.Context) error {
 }
 
 // Stop implements BucketStores. ThanosBucketStores has no background services to stop.
-func (u *ThanosBucketStores) Stop() error { return nil }
+func (u *ThanosBucketStores) Stop() error {
+	u.concurrentDataBytesTracker.Stop()
+	return nil
+}
 
 func (u *ThanosBucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
 	retries := backoff.New(ctx, backoff.Config{

@@ -169,6 +169,7 @@
 * [BUGFIX] Tenant Federation: Fix regex tenant federation resolving to an empty user list right after startup. #7811
 * [BUGFIX] Ingester: Don't count a forced head compaction skipped because blocks shipping is in progress as a failure. Previously such skips incremented `cortex_ingester_tsdb_compactions_failed_total`, producing spurious alerts. #7842
 * [BUGFIX] Compactor: Fix the final cleanup of a tenant marked for deletion being reported as failed on object stores that return an error when deleting a missing object (GCS, Azure, Swift, OCI). #7861
+* [BUGFIX] Alertmanager: Fix per-tenant `alertmanager_receivers_firewall_block_cidr_networks` overrides being appended to the global default list instead of replacing it, so CIDRs a tenant left out of its list stayed blocked. #7831
 
 ## 1.21.1 2026-06-04
 

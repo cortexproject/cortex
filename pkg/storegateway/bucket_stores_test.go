@@ -127,6 +127,7 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
 			stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), mBucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, stores.Stop()) })
 
 			if tc.mockInitialSync {
 				mBucket.GetFailures = tc.GetFailures
@@ -210,6 +211,7 @@ func TestBucketStores_InitialSync(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, stores.Stop()) })
 
 	// Query series before the initial sync.
 	for userID, metricName := range userToMetric {
@@ -287,6 +289,7 @@ func TestBucketStores_InitialSyncShouldRetryOnFailure(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, stores.Stop()) })
 
 	// Initial sync should succeed even if a transient error occurs.
 	require.NoError(t, stores.InitialSync(ctx))
@@ -348,6 +351,7 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, stores.Stop()) })
 
 	// Run an initial sync to discover 1 block.
 	generateStorageBlock(t, storageDir, userID, metricName, 10, 100, 15)
@@ -448,6 +452,7 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 
 			stores, err := NewBucketStores(cfg, testData.shardingStrategy, bucketClient, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, stores.Stop()) })
 
 			// Sync user stores and count the number of times the callback is called.
 			var storesCount atomic.Int32
@@ -525,6 +530,7 @@ func testBucketStoresSeriesShouldCorrectlyQuerySeriesSpanningMultipleChunks(t *t
 	reg := prometheus.NewPedanticRegistry()
 	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, stores.Stop()) })
 	require.NoError(t, stores.InitialSync(ctx))
 
 	tests := map[string]struct {
@@ -581,6 +587,7 @@ func TestBucketStores_Series_ShouldReturnErrorIfMaxInflightRequestIsReached(t *t
 
 	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, stores.Stop()) })
 	require.NoError(t, stores.InitialSync(context.Background()))
 
 	thanosStores := stores.(*ThanosBucketStores)
@@ -604,6 +611,7 @@ func TestBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabl
 
 	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, stores.Stop()) })
 	require.NoError(t, stores.InitialSync(context.Background()))
 
 	thanosStores := stores.(*ThanosBucketStores)
@@ -655,6 +663,7 @@ func TestBucketStores_SyncBlocksWithIgnoreBlocksBefore(t *testing.T) {
 	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil),
 		objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, stores.Stop()) })
 
 	// Perform initial sync
 	require.NoError(t, stores.InitialSync(ctx))
@@ -847,6 +856,7 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	stores, err := NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, stores.Stop()) })
 
 	// Perform sync.
 	sharding.users = []string{user1, user2}
@@ -946,6 +956,7 @@ func TestBucketStores_tokenBuckets(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	stores, err := NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	assert.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, stores.Stop()) })
 	thanosStores := stores.(*ThanosBucketStores)
 	assert.NotNil(t, thanosStores.instanceTokenBucket)
 
@@ -966,6 +977,7 @@ func TestBucketStores_tokenBuckets(t *testing.T) {
 	cfg.BucketStore.TokenBucketBytesLimiter.Mode = string(cortex_tsdb.TokenBucketBytesLimiterDryRun)
 	sharding.users = []string{user1, user2}
 	reg = prometheus.NewPedanticRegistry()
+	assert.NoError(t, stores.Stop())
 	stores, err = NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	assert.NoError(t, err)
 	thanosStores = stores.(*ThanosBucketStores)
@@ -978,6 +990,7 @@ func TestBucketStores_tokenBuckets(t *testing.T) {
 	cfg.BucketStore.TokenBucketBytesLimiter.Mode = string(cortex_tsdb.TokenBucketBytesLimiterDisabled)
 	sharding.users = []string{user1, user2}
 	reg = prometheus.NewPedanticRegistry()
+	assert.NoError(t, stores.Stop())
 	stores, err = NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	assert.NoError(t, err)
 
@@ -1004,6 +1017,7 @@ func TestBucketStores_getTokensToRetrieve(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	assert.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, stores.Stop()) })
 
 	thanosStores := stores.(*ThanosBucketStores)
 	assert.Equal(t, int64(2), thanosStores.getTokensToRetrieve(2, store.PostingsFetched))
@@ -1012,6 +1026,29 @@ func TestBucketStores_getTokensToRetrieve(t *testing.T) {
 	assert.Equal(t, int64(8), thanosStores.getTokensToRetrieve(2, store.SeriesTouched))
 	assert.Equal(t, int64(0), thanosStores.getTokensToRetrieve(2, store.ChunksFetched))
 	assert.Equal(t, int64(1), thanosStores.getTokensToRetrieve(2, store.ChunksTouched))
+}
+
+func TestBucketStores_StopShouldStopConcurrentDataBytesTracker(t *testing.T) {
+	cfg := prepareStorageConfig(t)
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: t.TempDir()})
+	require.NoError(t, err)
+
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, stores.Stop())
+
+	assertConcurrentDataBytesTrackerStopped(t, stores)
+}
+
+func assertConcurrentDataBytesTrackerStopped(t *testing.T, stores BucketStores) {
+	t.Helper()
+
+	tracker := stores.(*ThanosBucketStores).concurrentDataBytesTracker.(*concurrentDataBytesTracker)
+	select {
+	case <-tracker.stop:
+	default:
+		assert.Fail(t, "concurrent data bytes tracker has not been stopped")
+	}
 }
 
 func getUsersInDir(t *testing.T, dir string) []string {

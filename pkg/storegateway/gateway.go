@@ -265,9 +265,20 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 func (g *StoreGateway) starting(ctx context.Context) (err error) {
 	// In case this function will return error we want to unregister the instance
 	// from the ring. We do it ensuring dependencies are gracefully stopped if they
-	// were already started.
+	// were already started. The stopping function is not called when starting fails,
+	// so the bucket stores are stopped here too.
 	defer func() {
-		if err == nil || g.subservices == nil {
+		if err == nil {
+			return
+		}
+
+		if g.stores != nil {
+			if stopErr := g.stores.Stop(); stopErr != nil {
+				level.Warn(g.logger).Log("msg", "failed to stop bucket stores", "err", stopErr)
+			}
+		}
+
+		if g.subservices == nil {
 			return
 		}
 

@@ -246,8 +246,10 @@ func TestStoreGateway_InitialSyncFailure(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, services.Failed, g.State())
 
-	// We expect a clean shutdown, including unregistering the instance from the ring.
+	// We expect a clean shutdown, including unregistering the instance from the ring
+	// and stopping the bucket stores.
 	assert.False(t, g.ringLifecycler.IsRegistered())
+	assertConcurrentDataBytesTrackerStopped(t, g.stores)
 }
 
 // TestStoreGateway_InitialSyncWithWaitRingStability tests the store-gateway cold start case.
